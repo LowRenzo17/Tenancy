@@ -11,6 +11,7 @@ import PaymentHistory from './pages/PaymentHistory';
 import MaintenanceExpenses from './pages/MaintenanceExpenses';
 import Communication from './pages/Communication';
 import Reports from './pages/Reports';
+import Signup from './pages/Signup';
 import { useLocalStorage } from './hooks/useLocalStorage';
 
 /**
@@ -21,6 +22,8 @@ import { useLocalStorage } from './hooks/useLocalStorage';
  * - localStorage persistence for all data
  */
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useLocalStorage('tenancy_auth', false);
+  const [currentUser, setCurrentUser] = useLocalStorage('tenancy_user', null);
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [properties, setProperties] = useLocalStorage('tenancy_properties', []);
   const [tenants, setTenants] = useLocalStorage('tenancy_tenants', []);
@@ -171,6 +174,18 @@ export default function App() {
         return null;
     }
   };
+
+  // Handle signup
+  const handleSignup = (userData) => {
+    setCurrentUser(userData);
+    setIsAuthenticated(true);
+    setCurrentPage('dashboard');
+  };
+
+  // Show signup page if not authenticated
+  if (!isAuthenticated) {
+    return <Signup onSignup={handleSignup} />;
+  }
 
   return (
     <div className="flex h-screen" style={{ backgroundColor: '#f3faff' }}>
