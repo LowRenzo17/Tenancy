@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Plus, Trash2, Building2 } from 'lucide-react';
+import { Plus, Building2 } from 'lucide-react';
 import Card from '../components/Card';
-import StatusBadge from '../components/StatusBadge';
+import EditablePropertyItem from '../components/EditablePropertyItem';
 
 /**
  * Properties Page
@@ -10,7 +10,7 @@ import StatusBadge from '../components/StatusBadge';
  * - Zebra striping via alternating surface colors
  * - Modal form for adding new properties
  */
-export default function Properties({ properties, onAddProperty, onDeleteProperty }) {
+export default function Properties({ properties, onAddProperty, onDeleteProperty, onUpdateProperty }) {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -154,38 +154,13 @@ export default function Properties({ properties, onAddProperty, onDeleteProperty
       {properties.length > 0 ? (
         <div className="space-y-4">
           {properties.map((property, idx) => (
-            <Card
+            <EditablePropertyItem
               key={property.id}
-              variant={idx % 2 === 0 ? 'elevated' : 'subtle'}
-              className="p-6"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold" style={{ fontFamily: 'Manrope', color: '#071e27' }}>
-                    {property.name}
-                  </h3>
-                  <p className="text-sm mt-1" style={{ color: '#40484b' }}>
-                    {property.location}
-                  </p>
-                  <div className="mt-4">
-                    <StatusBadge status={property.status} />
-                  </div>
-                </div>
-                <button
-                  onClick={() => onDeleteProperty(property.id)}
-                  className="p-2 rounded-lg transition-colors"
-                  style={{
-                    color: '#ba1a1a',
-                    backgroundColor: 'transparent',
-                  }}
-                  onMouseEnter={(e) => (e.target.style.backgroundColor = 'rgba(186, 26, 26, 0.1)')}
-                  onMouseLeave={(e) => (e.target.style.backgroundColor = 'transparent')}
-                  aria-label="Delete property"
-                >
-                  <Trash2 size={20} />
-                </button>
-              </div>
-            </Card>
+              property={property}
+              onUpdate={onUpdateProperty}
+              onDelete={onDeleteProperty}
+              idx={idx}
+            />
           ))}
         </div>
       ) : (

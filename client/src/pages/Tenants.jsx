@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Plus, Trash2, Users } from 'lucide-react';
+import { Plus, Users } from 'lucide-react';
 import Card from '../components/Card';
-import StatusBadge from '../components/StatusBadge';
+import EditableTenantItem from '../components/EditableTenantItem';
 
 /**
  * Tenants Page
@@ -10,7 +10,7 @@ import StatusBadge from '../components/StatusBadge';
  * - Rent status indicators (paid, pending, overdue)
  * - Add tenant form modal
  */
-export default function Tenants({ tenants, properties, onAddTenant, onDeleteTenant }) {
+export default function Tenants({ tenants, properties, onAddTenant, onDeleteTenant, onUpdateTenant }) {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -197,44 +197,14 @@ export default function Tenants({ tenants, properties, onAddTenant, onDeleteTena
       {tenants.length > 0 ? (
         <div className="space-y-4">
           {tenants.map((tenant, idx) => (
-            <Card
+            <EditableTenantItem
               key={tenant.id}
-              variant={idx % 2 === 0 ? 'elevated' : 'subtle'}
-              className="p-6"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold" style={{ fontFamily: 'Manrope', color: '#071e27' }}>
-                    {tenant.name}
-                  </h3>
-                  <p className="text-sm mt-1" style={{ color: '#40484b' }}>
-                    Property: {getPropertyName(tenant.propertyId)}
-                  </p>
-                  <div className="mt-4 flex items-center gap-4">
-                    <div>
-                      <p className="text-xs" style={{ color: '#40484b' }}>Monthly Rent</p>
-                      <p className="text-lg font-semibold" style={{ color: '#071e27' }}>
-                        ${tenant.rentAmount.toLocaleString()}
-                      </p>
-                    </div>
-                    <StatusBadge status={tenant.rentStatus} />
-                  </div>
-                </div>
-                <button
-                  onClick={() => onDeleteTenant(tenant.id)}
-                  className="p-2 rounded-lg transition-colors"
-                  style={{
-                    color: '#ba1a1a',
-                    backgroundColor: 'transparent',
-                  }}
-                  onMouseEnter={(e) => (e.target.style.backgroundColor = 'rgba(186, 26, 26, 0.1)')}
-                  onMouseLeave={(e) => (e.target.style.backgroundColor = 'transparent')}
-                  aria-label="Delete tenant"
-                >
-                  <Trash2 size={20} />
-                </button>
-              </div>
-            </Card>
+              tenant={tenant}
+              properties={properties}
+              onUpdate={onUpdateTenant}
+              onDelete={onDeleteTenant}
+              idx={idx}
+            />
           ))}
         </div>
       ) : (

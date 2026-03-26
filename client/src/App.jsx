@@ -4,6 +4,8 @@ import Dashboard from './pages/Dashboard';
 import Properties from './pages/Properties';
 import Tenants from './pages/Tenants';
 import Maintenance from './pages/Maintenance';
+import Calendar from './pages/Calendar';
+import Reports from './pages/Reports';
 import { useLocalStorage } from './hooks/useLocalStorage';
 
 /**
@@ -33,6 +35,11 @@ export default function App() {
     setMaintenanceRequests(maintenanceRequests.filter(r => r.propertyId !== id));
   };
 
+  // Update property
+  const handleUpdateProperty = (id, updatedData) => {
+    setProperties(properties.map(p => p.id === id ? { ...p, ...updatedData } : p));
+  };
+
   // Add new tenant
   const handleAddTenant = (tenant) => {
     setTenants([...tenants, tenant]);
@@ -41,6 +48,11 @@ export default function App() {
   // Delete tenant
   const handleDeleteTenant = (id) => {
     setTenants(tenants.filter(t => t.id !== id));
+  };
+
+  // Update tenant
+  const handleUpdateTenant = (id, updatedData) => {
+    setTenants(tenants.map(t => t.id === id ? { ...t, ...updatedData } : t));
   };
 
   // Add maintenance request
@@ -77,6 +89,7 @@ export default function App() {
             properties={properties}
             onAddProperty={handleAddProperty}
             onDeleteProperty={handleDeleteProperty}
+            onUpdateProperty={handleUpdateProperty}
           />
         );
       case 'tenants':
@@ -86,6 +99,7 @@ export default function App() {
             properties={properties}
             onAddTenant={handleAddTenant}
             onDeleteTenant={handleDeleteTenant}
+            onUpdateTenant={handleUpdateTenant}
           />
         );
       case 'maintenance':
@@ -96,6 +110,21 @@ export default function App() {
             onAddRequest={handleAddRequest}
             onDeleteRequest={handleDeleteRequest}
             onUpdateStatus={handleUpdateStatus}
+          />
+        );
+      case 'calendar':
+        return (
+          <Calendar
+            tenants={tenants}
+            properties={properties}
+          />
+        );
+      case 'reports':
+        return (
+          <Reports
+            properties={properties}
+            tenants={tenants}
+            maintenanceRequests={maintenanceRequests}
           />
         );
       default:
