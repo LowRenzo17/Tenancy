@@ -17,9 +17,12 @@ import TwoFactorAuth from './pages/TwoFactorAuth';
 import LoginHistory from './pages/LoginHistory';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import TrustedDevices from './pages/TrustedDevices';
 import SessionTimeoutWarning from './components/SessionTimeoutWarning';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useSessionTracker, useLoginHistory } from './hooks/useSessionTracker';
+import { useTrustedDevices } from './hooks/useTrustedDevices';
+import { isTrustedDevice, generateDeviceFingerprint } from './lib/deviceFingerprint';
 
 /**
  * Main App Component
@@ -186,6 +189,8 @@ export default function App() {
         );
       case 'loginHistory':
         return <LoginHistory />;
+      case 'trustedDevices':
+        return <TrustedDevices currentUser={currentUser} />;
       default:
         return null;
     }
@@ -218,10 +223,19 @@ export default function App() {
       ...prev,
       twoFactorEnabled: true,
       twoFactorMethod: data.method,
+      trustDevice: data.trustDevice,
     }));
     setIsAuthenticated(true);
     setShow2FA(false);
     setCurrentPage('dashboard');
+  };
+
+  // Handle trust device
+  const handleTrustDevice = () => {
+    if (currentUser?.email) {
+      const { addTrustedDevice } = useTrustedDevices(currentUser.email);
+      addTrustedDevice();
+    }
   };
 
   // Handle session timeout
@@ -338,6 +352,7 @@ export default function App() {
           setCurrentPage('dashboard');
         }}
         email={currentUser?.email}
+        onTrustDevice={handleTrustDevice}
       />
     );
   }

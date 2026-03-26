@@ -8,12 +8,13 @@ import { ArrowRight, Shield } from 'lucide-react';
  * - SMS/Authenticator app options
  * - Backup codes display
  */
-export default function TwoFactorAuth({ onVerify, onSkip, email }) {
+export default function TwoFactorAuth({ onVerify, onSkip, email, onTrustDevice }) {
   const [verificationMethod, setVerificationMethod] = useState('sms');
   const [otp, setOtp] = useState('');
   const [showBackupCodes, setShowBackupCodes] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [trustDevice, setTrustDevice] = useState(false);
 
   // Generate mock backup codes
   const generateBackupCodes = () => {
@@ -53,10 +54,14 @@ export default function TwoFactorAuth({ onVerify, onSkip, email }) {
     setIsLoading(true);
     // Simulate verification
     setTimeout(() => {
+      if (trustDevice && onTrustDevice) {
+        onTrustDevice();
+      }
       onVerify({
         method: verificationMethod,
         backupCodes,
         otp,
+        trustDevice,
       });
       setIsLoading(false);
     }, 500);
@@ -220,6 +225,24 @@ export default function TwoFactorAuth({ onVerify, onSkip, email }) {
                       {errors.otp}
                     </p>
                   )}
+                </div>
+
+                <div className="flex items-center space-x-3 p-4 rounded-xl" style={{ backgroundColor: '#e6f6ff' }}>
+                  <input
+                    type="checkbox"
+                    id="trust-device"
+                    checked={trustDevice}
+                    onChange={(e) => setTrustDevice(e.target.checked)}
+                    className="w-5 h-5 cursor-pointer"
+                    style={{ accentColor: '#003441' }}
+                  />
+                  <label
+                    htmlFor="trust-device"
+                    className="flex-1 cursor-pointer text-sm font-medium"
+                    style={{ color: '#003441' }}
+                  >
+                    Trust this device for 30 days
+                  </label>
                 </div>
 
                 <button
