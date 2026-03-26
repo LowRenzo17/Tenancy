@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LayoutDashboard, Building2, Users, Wrench, Calendar, FileText, BarChart3, Bell, CreditCard, MessageSquare, DollarSign } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Building2, Users, Wrench, Calendar, FileText, BarChart3, Bell, CreditCard, MessageSquare, DollarSign, LogOut } from 'lucide-react';
 
 /**
  * Sidebar Navigation Component
@@ -25,6 +25,7 @@ export default function Sidebar({ currentPage, onPageChange, currentUser, onLogo
     { id: 'maintenanceExpenses', label: 'Maintenance Costs', icon: DollarSign },
     { id: 'communication', label: 'Communication', icon: MessageSquare },
     { id: 'reports', label: 'Reports', icon: FileText },
+    { id: 'loginHistory', label: 'Login History', icon: FileText },
   ];
 
   const handleNavClick = (pageId) => {

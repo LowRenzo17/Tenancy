@@ -13,7 +13,11 @@ import Communication from './pages/Communication';
 import Reports from './pages/Reports';
 import Signup from './pages/Signup';
 import Login from './pages/Login';
+import TwoFactorAuth from './pages/TwoFactorAuth';
+import LoginHistory from './pages/LoginHistory';
+import SessionTimeoutWarning from './components/SessionTimeoutWarning';
 import { useLocalStorage } from './hooks/useLocalStorage';
+import { useSessionTracker, useLoginHistory } from './hooks/useSessionTracker';
 
 /**
  * Main App Component
@@ -26,6 +30,9 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useLocalStorage('tenancy_auth', false);
   const [currentUser, setCurrentUser] = useLocalStorage('tenancy_user', null);
   const [showLogin, setShowLogin] = useState(false);
+  const [show2FA, setShow2FA] = useState(false);
+  const [showSessionWarning, setShowSessionWarning] = useState(false);
+  const [sessionTimeRemaining, setSessionTimeRemaining] = useState(60);
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [properties, setProperties] = useLocalStorage('tenancy_properties', []);
   const [tenants, setTenants] = useLocalStorage('tenancy_tenants', []);
@@ -172,6 +179,8 @@ export default function App() {
             maintenanceRequests={maintenanceRequests}
           />
         );
+      case 'loginHistory':
+        return <LoginHistory />;
       default:
         return null;
     }
@@ -187,20 +196,60 @@ export default function App() {
 
   // Handle login
   const handleLogin = (credentials) => {
+    const { addLoginRecord } = useLoginHistory();
+    addLoginRecord(credentials.email, credentials.accountType, true, 'email');
     setCurrentUser({
       email: credentials.email,
       accountType: credentials.accountType,
     });
-    setIsAuthenticated(true);
+    // Show 2FA verification
+    setShow2FA(true);
     setShowLogin(false);
+  };
+
+  // Handle 2FA verification
+  const handle2FAVerify = (data) => {
+    setCurrentUser(prev => ({
+      ...prev,
+      twoFactorEnabled: true,
+      twoFactorMethod: data.method,
+    }));
+    setIsAuthenticated(true);
+    setShow2FA(false);
     setCurrentPage('dashboard');
   };
+
+  // Handle session timeout
+  const handleSessionTimeout = () => {
+    setShowSessionWarning(true);
+    setSessionTimeRemaining(60);
+  };
+
+  // Handle extend session
+  const handleExtendSession = () => {
+    setShowSessionWarning(false);
+  };
+
+  // Handle session warning timeout
+  useEffect(() => {
+    if (!showSessionWarning) return;
+    if (sessionTimeRemaining <= 0) {
+      handleLogout();
+      return;
+    }
+    const timer = setTimeout(() => {
+      setSessionTimeRemaining(prev => prev - 1);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [showSessionWarning, sessionTimeRemaining]);
 
   // Handle logout
   const handleLogout = () => {
     setIsAuthenticated(false);
     setCurrentUser(null);
     setShowLogin(false);
+    setShow2FA(false);
+    setShowSessionWarning(false);
     setCurrentPage('dashboard');
   };
 
@@ -213,6 +262,21 @@ export default function App() {
           setShowLogin(false);
           setIsAuthenticated(false);
         }}
+      />
+    );
+  }
+
+  // Show 2FA verification if needed
+  if (show2FA) {
+    return (
+      <TwoFactorAuth
+        onVerify={handle2FAVerify}
+        onSkip={() => {
+          setIsAuthenticated(true);
+          setShow2FA(false);
+          setCurrentPage('dashboard');
+        }}
+        email={currentUser?.email}
       />
     );
   }
@@ -238,6 +302,14 @@ export default function App() {
           {renderPage()}
         </div>
       </main>
+
+      {/* Session Timeout Warning */}
+      <SessionTimeoutWarning
+        isVisible={showSessionWarning}
+        timeRemaining={sessionTimeRemaining}
+        onExtend={handleExtendSession}
+        onLogout={handleLogout}
+      />
     </div>
   );
 }
