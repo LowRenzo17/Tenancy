@@ -362,6 +362,72 @@ router.put('/conversations/:conversationId/archive', auth, async (req, res) => {
 });
 
 /**
+ * Get messages with pagination
+ */
+router.get('/conversations/:conversationId/messages', auth, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { page = 1, limit = 50 } = req.query;
+    const userId = req.user.id;
+
+    // Validate conversation and user authorization
+    const conversation = await Conversation.findById(conversationId);
+
+    if (!conversation) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conversation not found',
+      });
+    }
+
+    if (!conversation.participantIds.includes(userId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view this conversation',
+      });
+    }
+
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+    const skip = (pageNum - 1) * limitNum;
+
+    // Get total count
+    const totalMessages = await Message.countDocuments({ conversationId });
+
+    // Get paginated messages
+    const messages = await Message.find({ conversationId })
+      .populate('senderId', 'fullName email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum);
+
+    // Reverse to show chronological order
+    messages.reverse();
+
+    const totalPages = Math.ceil(totalMessages / limitNum);
+
+    res.json({
+      success: true,
+      messages,
+      pagination: {
+        currentPage: pageNum,
+        totalPages,
+        totalMessages,
+        messagesPerPage: limitNum,
+        hasNextPage: pageNum < totalPages,
+        hasPreviousPage: pageNum > 1,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching paginated messages:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+/**
  * Search conversations
  */
 router.get('/conversations/search/:query', auth, async (req, res) => {
@@ -386,6 +452,158 @@ router.get('/conversations/search/:query', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error searching conversations:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * Search messages within a conversation
+ */
+router.get('/conversations/:conversationId/search', auth, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { query } = req.query;
+    const userId = req.user.id;
+
+    if (!query || query.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Search query is required',
+      });
+    }
+
+    // Validate conversation and user authorization
+    const conversation = await Conversation.findById(conversationId);
+
+    if (!conversation) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conversation not found',
+      });
+    }
+
+    if (!conversation.participantIds.includes(userId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to search this conversation',
+      });
+    }
+
+    // Search messages
+    const messages = await Message.find({
+      conversationId,
+      content: { $regex: query, $options: 'i' },
+    })
+      .populate('senderId', 'fullName email')
+      .sort({ createdAt: -1 })
+      .limit(100);
+
+    res.json({
+      success: true,
+      messages,
+      query,
+      resultCount: messages.length,
+    });
+  } catch (error) {
+    console.error('Error searching messages:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * Edit message
+ */
+router.put('/messages/:messageId', auth, async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { content } = req.body;
+    const userId = req.user.id;
+
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Message content is required',
+      });
+    }
+
+    const message = await Message.findById(messageId);
+
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: 'Message not found',
+      });
+    }
+
+    // Only sender can edit
+    if (message.senderId.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to edit this message',
+      });
+    }
+
+    message.content = content;
+    message.edited = true;
+    message.editedAt = new Date();
+    await message.save();
+
+    res.json({
+      success: true,
+      message,
+    });
+  } catch (error) {
+    console.error('Error editing message:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * Add reaction to message
+ */
+router.post('/messages/:messageId/reactions', auth, async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { reaction } = req.body;
+    const userId = req.user.id;
+
+    if (!reaction) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reaction is required',
+      });
+    }
+
+    const message = await Message.findByIdAndUpdate(
+      messageId,
+      {
+        $set: { [`reactions.${userId}`]: reaction },
+      },
+      { new: true }
+    );
+
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: 'Message not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message,
+    });
+  } catch (error) {
+    console.error('Error adding reaction:', error);
     res.status(500).json({
       success: false,
       message: error.message,

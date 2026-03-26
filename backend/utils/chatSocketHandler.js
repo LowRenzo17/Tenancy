@@ -1,7 +1,11 @@
 /**
  * Socket.io Chat Event Handlers
- * Manages real-time chat functionality including messages, typing indicators, and read receipts
+ * Manages real-time chat functionality with MongoDB persistence
  */
+
+import Message from '../models/Message.js';
+import Conversation from '../models/Conversation.js';
+import User from '../models/User.js';
 
 // Store active users and their socket IDs
 const activeUsers = new Map();
@@ -30,32 +34,66 @@ export const initializeChatSocket = (io) => {
     });
 
     /**
-     * Send message
+     * Send message with MongoDB persistence
      */
     socket.on('send-message', async (data) => {
-      const { conversationId, senderId, receiverId, senderName, content } = data;
+      try {
+        const { conversationId, senderId, receiverId, senderName, content } = data;
 
-      const message = {
-        id: `msg-${Date.now()}`,
-        conversationId,
-        senderId,
-        receiverId,
-        senderName,
-        content,
-        timestamp: new Date(),
-        isRead: false,
-      };
+        // Validate conversation exists
+        const conversation = await Conversation.findById(conversationId);
+        if (!conversation) {
+          socket.emit('message-error', {
+            error: 'Conversation not found',
+          });
+          return;
+        }
 
-      // Send to receiver
-      io.to(`user-${receiverId}`).emit('receive-message', message);
+        // Create and save message to MongoDB
+        const message = new Message({
+          conversationId,
+          senderId,
+          receiverId,
+          content,
+          messageType: 'text',
+          isRead: false,
+        });
 
-      // Send confirmation to sender
-      socket.emit('message-sent', {
-        ...message,
-        status: 'sent',
-      });
+        await message.save();
+        await message.populate('senderId', 'fullName email');
 
-      console.log(`Message sent from ${senderId} to ${receiverId}`);
+        // Update conversation metadata
+        conversation.lastMessage = message._id;
+        conversation.lastMessageAt = new Date();
+        conversation.messageCount = (conversation.messageCount || 0) + 1;
+        await conversation.save();
+
+        const messageData = {
+          id: message._id.toString(),
+          conversationId: message.conversationId.toString(),
+          senderId: message.senderId._id.toString(),
+          senderName: message.senderId.fullName,
+          content: message.content,
+          timestamp: message.createdAt,
+          isRead: message.isRead,
+        };
+
+        // Send to receiver
+        io.to(`user-${receiverId}`).emit('receive-message', messageData);
+
+        // Send confirmation to sender
+        socket.emit('message-sent', {
+          ...messageData,
+          status: 'sent',
+        });
+
+        console.log(`Message saved to MongoDB: ${message._id}`);
+      } catch (error) {
+        console.error('Error sending message:', error);
+        socket.emit('message-error', {
+          error: error.message,
+        });
+      }
     });
 
     /**
@@ -100,9 +138,8 @@ export const initializeChatSocket = (io) => {
     socket.on('stop-typing', (data) => {
       const { conversationId, senderId, receiverId } = data;
 
-      const typingSet = typingUsers.get(conversationId);
-      if (typingSet) {
-        typingSet.delete(senderId);
+      if (typingUsers.has(conversationId)) {
+        typingUsers.get(conversationId).delete(senderId);
       }
 
       io.to(`user-${receiverId}`).emit('user-stopped-typing', {
@@ -112,31 +149,163 @@ export const initializeChatSocket = (io) => {
     });
 
     /**
-     * Message read receipt
+     * Mark message as read with MongoDB persistence
      */
-    socket.on('message-read', (data) => {
-      const { messageId, conversationId, senderId, readerId } = data;
+    socket.on('message-read', async (data) => {
+      try {
+        const { messageId, conversationId, senderId, readerId } = data;
 
-      io.to(`user-${senderId}`).emit('message-read-receipt', {
-        messageId,
-        conversationId,
-        readerId,
-        timestamp: new Date(),
-      });
+        // Update message in MongoDB
+        const message = await Message.findByIdAndUpdate(
+          messageId,
+          {
+            isRead: true,
+            readAt: new Date(),
+          },
+          { new: true }
+        );
 
-      console.log(`Message ${messageId} read by ${readerId}`);
+        if (message) {
+          // Notify sender that message was read
+          io.to(`user-${senderId}`).emit('message-read-receipt', {
+            messageId: message._id.toString(),
+            conversationId,
+            readAt: message.readAt,
+          });
+
+          console.log(`Message ${messageId} marked as read`);
+        }
+      } catch (error) {
+        console.error('Error marking message as read:', error);
+      }
     });
 
     /**
-     * Mark conversation as read
+     * Mark entire conversation as read
      */
-    socket.on('conversation-read', (data) => {
-      const { conversationId, userId } = data;
+    socket.on('conversation-read', async (data) => {
+      try {
+        const { conversationId, userId } = data;
 
-      io.to(`user-${userId}`).emit('conversation-marked-read', {
-        conversationId,
-        timestamp: new Date(),
-      });
+        // Update all unread messages in conversation
+        const result = await Message.updateMany(
+          {
+            conversationId,
+            receiverId: userId,
+            isRead: false,
+          },
+          {
+            isRead: true,
+            readAt: new Date(),
+          }
+        );
+
+        // Notify other participants
+        io.to(`conversation-${conversationId}`).emit('conversation-marked-read', {
+          conversationId,
+          userId,
+          modifiedCount: result.modifiedCount,
+        });
+
+        console.log(`Conversation ${conversationId} marked as read (${result.modifiedCount} messages)`);
+      } catch (error) {
+        console.error('Error marking conversation as read:', error);
+      }
+    });
+
+    /**
+     * Delete message
+     */
+    socket.on('delete-message', async (data) => {
+      try {
+        const { messageId, conversationId, senderId } = data;
+
+        // Delete from MongoDB
+        const message = await Message.findByIdAndDelete(messageId);
+
+        if (message) {
+          // Update conversation message count
+          await Conversation.findByIdAndUpdate(
+            conversationId,
+            { $inc: { messageCount: -1 } }
+          );
+
+          // Broadcast deletion to all participants
+          io.to(`conversation-${conversationId}`).emit('message-deleted', {
+            messageId: message._id.toString(),
+            conversationId,
+          });
+
+          console.log(`Message ${messageId} deleted`);
+        }
+      } catch (error) {
+        console.error('Error deleting message:', error);
+      }
+    });
+
+    /**
+     * Edit message
+     */
+    socket.on('edit-message', async (data) => {
+      try {
+        const { messageId, conversationId, newContent } = data;
+
+        // Update message in MongoDB
+        const message = await Message.findByIdAndUpdate(
+          messageId,
+          {
+            content: newContent,
+            edited: true,
+            editedAt: new Date(),
+          },
+          { new: true }
+        );
+
+        if (message) {
+          // Broadcast edit to all participants
+          io.to(`conversation-${conversationId}`).emit('message-edited', {
+            messageId: message._id.toString(),
+            conversationId,
+            content: message.content,
+            editedAt: message.editedAt,
+          });
+
+          console.log(`Message ${messageId} edited`);
+        }
+      } catch (error) {
+        console.error('Error editing message:', error);
+      }
+    });
+
+    /**
+     * React to message
+     */
+    socket.on('react-to-message', async (data) => {
+      try {
+        const { messageId, conversationId, userId, reaction } = data;
+
+        // Update message reactions in MongoDB
+        const message = await Message.findByIdAndUpdate(
+          messageId,
+          {
+            $set: { [`reactions.${userId}`]: reaction },
+          },
+          { new: true }
+        );
+
+        if (message) {
+          // Broadcast reaction to all participants
+          io.to(`conversation-${conversationId}`).emit('message-reaction', {
+            messageId: message._id.toString(),
+            conversationId,
+            reactions: message.reactions || {},
+          });
+
+          console.log(`Reaction added to message ${messageId}`);
+        }
+      } catch (error) {
+        console.error('Error adding reaction:', error);
+      }
     });
 
     /**
@@ -158,224 +327,30 @@ export const initializeChatSocket = (io) => {
     });
 
     /**
-     * Start video call
-     */
-    socket.on('initiate-call', (data) => {
-      const { conversationId, callerId, callerName, receiverId } = data;
-
-      io.to(`user-${receiverId}`).emit('incoming-call', {
-        conversationId,
-        callerId,
-        callerName,
-        callId: `call-${Date.now()}`,
-        timestamp: new Date(),
-      });
-
-      console.log(`Call initiated from ${callerId} to ${receiverId}`);
-    });
-
-    /**
-     * Accept call
-     */
-    socket.on('accept-call', (data) => {
-      const { callId, conversationId, accepterId, callerId } = data;
-
-      io.to(`user-${callerId}`).emit('call-accepted', {
-        callId,
-        conversationId,
-        accepterId,
-        timestamp: new Date(),
-      });
-
-      console.log(`Call ${callId} accepted by ${accepterId}`);
-    });
-
-    /**
-     * Reject call
-     */
-    socket.on('reject-call', (data) => {
-      const { callId, conversationId, rejectedBy, callerId } = data;
-
-      io.to(`user-${callerId}`).emit('call-rejected', {
-        callId,
-        conversationId,
-        rejectedBy,
-        timestamp: new Date(),
-      });
-
-      console.log(`Call ${callId} rejected by ${rejectedBy}`);
-    });
-
-    /**
-     * End call
-     */
-    socket.on('end-call', (data) => {
-      const { callId, conversationId, userId, otherUserId } = data;
-
-      io.to(`user-${otherUserId}`).emit('call-ended', {
-        callId,
-        conversationId,
-        endedBy: userId,
-        timestamp: new Date(),
-      });
-
-      console.log(`Call ${callId} ended by ${userId}`);
-    });
-
-    /**
-     * Send file/attachment
-     */
-    socket.on('send-file', (data) => {
-      const { conversationId, senderId, receiverId, senderName, fileName, fileUrl, fileSize } = data;
-
-      const message = {
-        id: `msg-${Date.now()}`,
-        conversationId,
-        senderId,
-        receiverId,
-        senderName,
-        content: `Shared file: ${fileName}`,
-        fileUrl,
-        fileSize,
-        messageType: 'file',
-        timestamp: new Date(),
-        isRead: false,
-      };
-
-      io.to(`user-${receiverId}`).emit('receive-message', message);
-      socket.emit('message-sent', { ...message, status: 'sent' });
-
-      console.log(`File sent from ${senderId} to ${receiverId}`);
-    });
-
-    /**
-     * Send location
-     */
-    socket.on('send-location', (data) => {
-      const { conversationId, senderId, receiverId, senderName, latitude, longitude } = data;
-
-      const message = {
-        id: `msg-${Date.now()}`,
-        conversationId,
-        senderId,
-        receiverId,
-        senderName,
-        content: 'Shared location',
-        latitude,
-        longitude,
-        messageType: 'location',
-        timestamp: new Date(),
-        isRead: false,
-      };
-
-      io.to(`user-${receiverId}`).emit('receive-message', message);
-      socket.emit('message-sent', { ...message, status: 'sent' });
-
-      console.log(`Location sent from ${senderId} to ${receiverId}`);
-    });
-
-    /**
-     * Delete message
-     */
-    socket.on('delete-message', (data) => {
-      const { messageId, conversationId, senderId, receiverId } = data;
-
-      io.to(`conversation-${conversationId}`).emit('message-deleted', {
-        messageId,
-        conversationId,
-        deletedBy: senderId,
-        timestamp: new Date(),
-      });
-
-      console.log(`Message ${messageId} deleted by ${senderId}`);
-    });
-
-    /**
-     * Edit message
-     */
-    socket.on('edit-message', (data) => {
-      const { messageId, conversationId, senderId, newContent, receiverId } = data;
-
-      io.to(`conversation-${conversationId}`).emit('message-edited', {
-        messageId,
-        conversationId,
-        newContent,
-        editedBy: senderId,
-        editedAt: new Date(),
-      });
-
-      console.log(`Message ${messageId} edited by ${senderId}`);
-    });
-
-    /**
-     * React to message
-     */
-    socket.on('react-to-message', (data) => {
-      const { messageId, conversationId, userId, reaction } = data;
-
-      io.to(`conversation-${conversationId}`).emit('message-reaction', {
-        messageId,
-        conversationId,
-        userId,
-        reaction,
-        timestamp: new Date(),
-      });
-
-      console.log(`Reaction added to message ${messageId}`);
-    });
-
-    /**
-     * User disconnect
+     * User disconnects
      */
     socket.on('disconnect', () => {
-      let disconnectedUserId;
+      // Find and remove user from active users
       for (const [userId, socketId] of activeUsers.entries()) {
         if (socketId === socket.id) {
-          disconnectedUserId = userId;
           activeUsers.delete(userId);
+          console.log(`User ${userId} disconnected`);
+
+          // Broadcast user offline status
+          io.emit('user-offline', {
+            userId,
+            timestamp: new Date(),
+          });
           break;
         }
       }
-
-      if (disconnectedUserId) {
-        io.emit('user-offline', {
-          userId: disconnectedUserId,
-          timestamp: new Date(),
-        });
-        console.log(`User ${disconnectedUserId} disconnected`);
-      }
-
-      console.log(`Socket ${socket.id} disconnected`);
     });
 
     /**
-     * Error handler
+     * Handle socket errors
      */
     socket.on('error', (error) => {
       console.error(`Socket error: ${error}`);
     });
   });
-
-  return io;
-};
-
-/**
- * Get active users
- */
-export const getActiveUsers = () => {
-  return Array.from(activeUsers.keys());
-};
-
-/**
- * Get active user socket ID
- */
-export const getActiveUserSocket = (userId) => {
-  return activeUsers.get(userId);
-};
-
-/**
- * Check if user is online
- */
-export const isUserOnline = (userId) => {
-  return activeUsers.has(userId);
 };
