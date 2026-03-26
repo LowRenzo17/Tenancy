@@ -3,6 +3,7 @@ import { Route, Switch } from 'wouter';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DataProvider, useData } from './contexts/DataContext';
 import { SocketProvider, useSocket } from './contexts/SocketContext';
+import { ChatProvider } from './contexts/ChatContext';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import Sidebar from './components/Sidebar';
 import SessionTimeoutWarning from './components/SessionTimeoutWarning';
@@ -31,6 +32,7 @@ import LoginHistory from './pages/LoginHistory';
 import TrustedDevices from './pages/TrustedDevices';
 import MyLease from './pages/MyLease';
 import MyPayments from './pages/MyPayments';
+import Chat from './pages/Chat';
 
 /**
  * Main Router Component
@@ -107,6 +109,8 @@ function AppRouter() {
         return <MyPayments currentUser={user} />;
       case 'submitMaintenance':
         return <SubmitMaintenance currentUser={user} />;
+      case 'chat':
+        return <Chat />;
       default:
         return <Dashboard properties={properties} tenants={tenants} maintenanceRequests={maintenance} />;
     }
@@ -174,9 +178,11 @@ export default function App() {
     <AuthProvider>
       <DataProvider>
         <SocketProvider>
-          <TooltipProvider>
-            <AppRouter />
-          </TooltipProvider>
+          <ChatProvider>
+            <TooltipProvider>
+              <AppRouter />
+            </TooltipProvider>
+          </ChatProvider>
         </SocketProvider>
       </DataProvider>
     </AuthProvider>

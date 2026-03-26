@@ -1,9 +1,10 @@
 import { Server } from 'socket.io';
+import { initializeChatSocket } from './chatSocketHandler.js';
 
 /**
  * Initialize Socket.io server for real-time notifications
  */
-export const initializeSocket = (httpServer) => {
+export const initializeSocket = (httpServer, chatHandler = null) => {
   const io = new Server(httpServer, {
     cors: {
       origin: process.env.FRONTEND_URL || 'http://localhost:3000',
@@ -14,6 +15,13 @@ export const initializeSocket = (httpServer) => {
 
   // Store active users
   const activeUsers = new Map();
+
+  // Initialize chat socket handlers if provided
+  if (chatHandler) {
+    chatHandler(io);
+  } else {
+    initializeChatSocket(io);
+  }
 
   // Connection handler
   io.on('connection', (socket) => {
@@ -220,11 +228,41 @@ export const initializeSocket = (httpServer) => {
 };
 
 /**
+ * Emit chat notification to user
+ */
+export const emitChatNotification = (io, userId, notification) => {
+  io.to(`user-${userId}`).emit('chat-notification', {
+    ...notification,
+    timestamp: new Date(),
+  });
+};
+
+/**
+ * Emit message to conversation
+ */
+export const emitToConversation = (io, conversationId, eventName, data) => {
+  io.to(`conversation-${conversationId}`).emit(eventName, {
+    ...data,
+    timestamp: new Date(),
+  });
+};
+
+/**
  * Emit event to specific user
  */
 export const emitToUser = (io, userId, eventName, data) => {
   io.to(`user-${userId}`).emit(eventName, {
     ...data,
+    timestamp: new Date(),
+  });
+};
+
+/**
+ * Emit chat message to user
+ */
+export const emitChatMessage = (io, userId, message) => {
+  io.to(`user-${userId}`).emit('receive-message', {
+    ...message,
     timestamp: new Date(),
   });
 };
