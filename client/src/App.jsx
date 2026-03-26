@@ -5,6 +5,8 @@ import Properties from './pages/Properties';
 import Tenants from './pages/Tenants';
 import Maintenance from './pages/Maintenance';
 import Calendar from './pages/Calendar';
+import Analytics from './pages/Analytics';
+import Reminders from './pages/Reminders';
 import Reports from './pages/Reports';
 import { useLocalStorage } from './hooks/useLocalStorage';
 
@@ -115,6 +117,20 @@ export default function App() {
       case 'calendar':
         return (
           <Calendar
+            tenants={tenants}
+            properties={properties}
+          />
+        );
+      case 'analytics':
+        return (
+          <Analytics
+            properties={properties}
+            tenants={tenants}
+          />
+        );
+      case 'reminders':
+        return (
+          <Reminders
             tenants={tenants}
             properties={properties}
           />

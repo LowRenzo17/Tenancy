@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LayoutDashboard, Building2, Users, Wrench, Calendar, FileText } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Building2, Users, Wrench, Calendar, FileText, BarChart3, Bell } from 'lucide-react';
 
 /**
  * Sidebar Navigation Component
@@ -19,6 +19,8 @@ export default function Sidebar({ currentPage, onPageChange }) {
     { id: 'tenants', label: 'Tenants', icon: Users },
     { id: 'maintenance', label: 'Maintenance', icon: Wrench },
     { id: 'calendar', label: 'Rent Calendar', icon: Calendar },
+    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'reminders', label: 'Reminders', icon: Bell },
     { id: 'reports', label: 'Reports', icon: FileText },
   ];
 
