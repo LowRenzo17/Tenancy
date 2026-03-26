@@ -1,8 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import http from 'http';
 import connectDB from './config/database.js';
 import errorHandler from './middleware/errorHandler.js';
+import { initializeSocket } from './utils/socketHandler.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -18,6 +20,11 @@ dotenv.config();
 
 // Initialize Express app
 const app = express();
+const httpServer = http.createServer(app);
+const io = initializeSocket(httpServer);
+
+// Make io accessible to routes
+app.set('io', io);
 
 // Connect to database
 connectDB();
@@ -54,6 +61,7 @@ app.use(errorHandler);
 
 // Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Socket.io server initialized`);
 });
