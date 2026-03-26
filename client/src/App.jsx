@@ -18,6 +18,10 @@ import LoginHistory from './pages/LoginHistory';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import TrustedDevices from './pages/TrustedDevices';
+import TenantDashboard from './pages/TenantDashboard';
+import MyLease from './pages/MyLease';
+import MyPayments from './pages/MyPayments';
+import SubmitMaintenance from './pages/SubmitMaintenance';
 import SessionTimeoutWarning from './components/SessionTimeoutWarning';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useSessionTracker, useLoginHistory } from './hooks/useSessionTracker';
@@ -99,7 +103,10 @@ export default function App() {
 
   // Render current page
   const renderPage = () => {
-    switch (currentPage) {
+    // For tenants, redirect dashboard to tenantDashboard
+    const pageToRender = currentUser?.accountType === 'tenant' && currentPage === 'dashboard' ? 'tenantDashboard' : currentPage;
+    
+    switch (pageToRender) {
       case 'dashboard':
         return (
           <Dashboard
@@ -108,6 +115,8 @@ export default function App() {
             maintenanceRequests={maintenanceRequests}
           />
         );
+      case 'tenantDashboard':
+        return <TenantDashboard currentUser={currentUser} />;
       case 'properties':
         return (
           <Properties
@@ -191,6 +200,12 @@ export default function App() {
         return <LoginHistory />;
       case 'trustedDevices':
         return <TrustedDevices currentUser={currentUser} />;
+      case 'myLease':
+        return <MyLease currentUser={currentUser} />;
+      case 'myPayments':
+        return <MyPayments currentUser={currentUser} />;
+      case 'submitMaintenance':
+        return <SubmitMaintenance currentUser={currentUser} />;
       default:
         return null;
     }

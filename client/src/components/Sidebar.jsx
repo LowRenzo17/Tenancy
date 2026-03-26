@@ -13,7 +13,8 @@ export default function Sidebar({ currentPage, onPageChange, currentUser, onLogo
   // Colors defined as inline styles to avoid Tailwind class conflicts
   const [isOpen, setIsOpen] = useState(false);
 
-  const navItems = [
+  // Role-based navigation items
+  const ownerNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'properties', label: 'Properties', icon: Building2 },
     { id: 'tenants', label: 'Tenants', icon: Users },
@@ -28,6 +29,17 @@ export default function Sidebar({ currentPage, onPageChange, currentUser, onLogo
     { id: 'loginHistory', label: 'Login History', icon: FileText },
     { id: 'trustedDevices', label: 'Trusted Devices', icon: Shield },
   ];
+
+  const tenantNavItems = [
+    { id: 'tenantDashboard', label: 'My Dashboard', icon: LayoutDashboard },
+    { id: 'myLease', label: 'My Lease', icon: FileText },
+    { id: 'myPayments', label: 'My Payments', icon: CreditCard },
+    { id: 'submitMaintenance', label: 'Request Maintenance', icon: Wrench },
+    { id: 'loginHistory', label: 'Login History', icon: FileText },
+    { id: 'trustedDevices', label: 'Trusted Devices', icon: Shield },
+  ];
+
+  const navItems = currentUser?.accountType === 'tenant' ? tenantNavItems : ownerNavItems;
 
   const handleNavClick = (pageId) => {
     onPageChange(pageId);
