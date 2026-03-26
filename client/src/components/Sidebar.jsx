@@ -8,7 +8,7 @@ import { Menu, X, LayoutDashboard, Building2, Users, Wrench, Calendar, FileText,
  * - Manrope typography for navigation hierarchy
  * - Responsive: Collapses on mobile
  */
-export default function Sidebar({ currentPage, onPageChange }) {
+export default function Sidebar({ currentPage, onPageChange, currentUser, onLogout }) {
   // Design System: The Architectural Ledger
   // Colors defined as inline styles to avoid Tailwind class conflicts
   const [isOpen, setIsOpen] = useState(false);
@@ -95,6 +95,32 @@ export default function Sidebar({ currentPage, onPageChange }) {
             );
           })}
         </nav>
+
+        {/* User Profile & Logout */}
+        {currentUser && (
+          <div className="p-4 border-t" style={{ borderColor: '#d5ecf8' }}>
+            <div className="mb-3 pb-3" style={{ borderBottom: '1px solid #d5ecf8' }}>
+              <p className="text-xs font-semibold" style={{ color: '#071e27' }}>
+                {currentUser.name || currentUser.email}
+              </p>
+              <p className="text-xs" style={{ color: '#40484b' }}>
+                {currentUser.accountType === 'owner' ? 'Property Owner' : 'Tenant'}
+              </p>
+            </div>
+            <button
+              onClick={onLogout}
+              className="w-full px-3 py-2 rounded-lg text-sm font-medium transition-all"
+              style={{
+                backgroundColor: '#ffdad6',
+                color: '#ba1a1a',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#ffccc4')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffdad6')}
+            >
+              Sign Out
+            </button>
+          </div>
+        )}
 
         {/* Footer Info */}
         <div className="p-4 text-xs" style={{ borderTop: '1px solid #d5ecf8', color: '#40484b' }}>

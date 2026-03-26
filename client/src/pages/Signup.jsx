@@ -7,7 +7,7 @@ import { Building2, Users } from 'lucide-react';
  * - Professional signup form with account type selection
  * - Property Owner vs Tenant account types
  */
-export default function Signup({ onSignup }) {
+export default function Signup({ onSignup, onLoginClick }) {
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -463,13 +463,13 @@ export default function Signup({ onSignup }) {
             {/* Login Link */}
             <p className="text-center text-sm" style={{ color: '#40484b' }}>
               Already have an account?{' '}
-              <a
-                href="#"
-                className="font-bold hover:underline underline-offset-4 transition-all"
+              <button
+                onClick={onLoginClick}
+                className="font-bold hover:underline underline-offset-4 transition-all bg-none border-none cursor-pointer"
                 style={{ color: '#003441' }}
               >
                 Log in
-              </a>
+              </button>
             </p>
           </form>
 
