@@ -15,6 +15,8 @@ import Signup from './pages/Signup';
 import Login from './pages/Login';
 import TwoFactorAuth from './pages/TwoFactorAuth';
 import LoginHistory from './pages/LoginHistory';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import SessionTimeoutWarning from './components/SessionTimeoutWarning';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useSessionTracker, useLoginHistory } from './hooks/useSessionTracker';
@@ -33,6 +35,9 @@ export default function App() {
   const [show2FA, setShow2FA] = useState(false);
   const [showSessionWarning, setShowSessionWarning] = useState(false);
   const [sessionTimeRemaining, setSessionTimeRemaining] = useState(60);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetToken, setResetToken] = useState(null);
+  const [showResetPassword, setShowResetPassword] = useState(false);
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [properties, setProperties] = useLocalStorage('tenancy_properties', []);
   const [tenants, setTenants] = useLocalStorage('tenancy_tenants', []);
@@ -250,10 +255,65 @@ export default function App() {
     setShowLogin(false);
     setShow2FA(false);
     setShowSessionWarning(false);
+    setShowForgotPassword(false);
+    setShowResetPassword(false);
     setCurrentPage('dashboard');
   };
 
+  // Handle forgot password
+  const handleForgotPassword = () => {
+    setShowForgotPassword(true);
+    setShowLogin(false);
+  };
+
+  // Handle reset sent
+  const handleResetSent = (email) => {
+    // After email is sent, user can check their email
+  };
+
+  // Check for reset token in URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('resetToken');
+    if (token && !isAuthenticated) {
+      setResetToken(token);
+      setShowResetPassword(true);
+      setShowLogin(false);
+      setShowForgotPassword(false);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [isAuthenticated]);
+
   // Show login page if requested
+  // Show forgot password page
+  if (showForgotPassword) {
+    return (
+      <ForgotPassword
+        onBack={() => setShowForgotPassword(false)}
+        onResetSent={handleResetSent}
+      />
+    );
+  }
+
+  // Show reset password page
+  if (showResetPassword && resetToken) {
+    return (
+      <ResetPassword
+        token={resetToken}
+        onResetComplete={() => {
+          setShowResetPassword(false);
+          setResetToken(null);
+          setShowLogin(true);
+        }}
+        onBack={() => {
+          setShowResetPassword(false);
+          setResetToken(null);
+          setShowLogin(true);
+        }}
+      />
+    );
+  }
+
   if (showLogin) {
     return (
       <Login
@@ -262,6 +322,7 @@ export default function App() {
           setShowLogin(false);
           setIsAuthenticated(false);
         }}
+        onForgotPassword={handleForgotPassword}
       />
     );
   }

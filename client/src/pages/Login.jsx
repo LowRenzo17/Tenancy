@@ -9,7 +9,7 @@ import { Eye, EyeOff, Mail, Lock, ArrowRight } from 'lucide-react';
  * - Password visibility toggle
  * - Remember device option
  */
-export default function Login({ onLogin, onSignupClick }) {
+export default function Login({ onLogin, onSignupClick, onForgotPassword }) {
   const [loginType, setLoginType] = useState('owner');
   const [formData, setFormData] = useState({
     email: '',
@@ -275,13 +275,17 @@ export default function Login({ onLogin, onSignupClick }) {
                 >
                   Password
                 </label>
-                <a
-                  href="#"
-                  className="text-xs font-bold hover:underline"
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (onForgotPassword) onForgotPassword();
+                  }}
+                  className="text-xs font-bold hover:underline bg-none border-none cursor-pointer p-0"
                   style={{ color: '#003441' }}
                 >
                   Forgot password?
-                </a>
+                </button>
               </div>
               <div className="relative group">
                 <Lock
