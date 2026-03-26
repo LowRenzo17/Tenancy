@@ -1,0 +1,119 @@
+import { useState, useEffect } from 'react';
+import Sidebar from './components/Sidebar';
+import Dashboard from './pages/Dashboard';
+import Properties from './pages/Properties';
+import Tenants from './pages/Tenants';
+import Maintenance from './pages/Maintenance';
+import { useLocalStorage } from './hooks/useLocalStorage';
+
+/**
+ * Main App Component
+ * Design System: The Architectural Ledger
+ * - Sidebar navigation with responsive collapse
+ * - Page routing via state management
+ * - localStorage persistence for all data
+ */
+export default function App() {
+  const [currentPage, setCurrentPage] = useState('dashboard');
+  const [properties, setProperties] = useLocalStorage('tenancy_properties', []);
+  const [tenants, setTenants] = useLocalStorage('tenancy_tenants', []);
+  const [maintenanceRequests, setMaintenanceRequests] = useLocalStorage('tenancy_maintenance', []);
+
+  // Add new property
+  const handleAddProperty = (property) => {
+    setProperties([...properties, property]);
+  };
+
+  // Delete property
+  const handleDeleteProperty = (id) => {
+    setProperties(properties.filter(p => p.id !== id));
+    // Also remove associated tenants
+    setTenants(tenants.filter(t => t.propertyId !== id));
+    // Also remove associated maintenance requests
+    setMaintenanceRequests(maintenanceRequests.filter(r => r.propertyId !== id));
+  };
+
+  // Add new tenant
+  const handleAddTenant = (tenant) => {
+    setTenants([...tenants, tenant]);
+  };
+
+  // Delete tenant
+  const handleDeleteTenant = (id) => {
+    setTenants(tenants.filter(t => t.id !== id));
+  };
+
+  // Add maintenance request
+  const handleAddRequest = (request) => {
+    setMaintenanceRequests([...maintenanceRequests, request]);
+  };
+
+  // Delete maintenance request
+  const handleDeleteRequest = (id) => {
+    setMaintenanceRequests(maintenanceRequests.filter(r => r.id !== id));
+  };
+
+  // Update maintenance request status
+  const handleUpdateStatus = (id, newStatus) => {
+    setMaintenanceRequests(
+      maintenanceRequests.map(r => r.id === id ? { ...r, status: newStatus } : r)
+    );
+  };
+
+  // Render current page
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'dashboard':
+        return (
+          <Dashboard
+            properties={properties}
+            tenants={tenants}
+            maintenanceRequests={maintenanceRequests}
+          />
+        );
+      case 'properties':
+        return (
+          <Properties
+            properties={properties}
+            onAddProperty={handleAddProperty}
+            onDeleteProperty={handleDeleteProperty}
+          />
+        );
+      case 'tenants':
+        return (
+          <Tenants
+            tenants={tenants}
+            properties={properties}
+            onAddTenant={handleAddTenant}
+            onDeleteTenant={handleDeleteTenant}
+          />
+        );
+      case 'maintenance':
+        return (
+          <Maintenance
+            maintenanceRequests={maintenanceRequests}
+            properties={properties}
+            onAddRequest={handleAddRequest}
+            onDeleteRequest={handleDeleteRequest}
+            onUpdateStatus={handleUpdateStatus}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="flex h-screen" style={{ backgroundColor: '#f3faff' }}>
+      {/* Sidebar Navigation */}
+      <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} />
+
+      {/* Main Content Area */}
+      <main className="flex-1 overflow-auto md:ml-0">
+        <div className="p-6 md:p-8 lg:p-10 max-w-7xl mx-auto">
+          {renderPage()}
+        </div>
+      </main>
+    </div>
+  );
+}
