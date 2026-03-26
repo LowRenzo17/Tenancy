@@ -7,6 +7,9 @@ import Maintenance from './pages/Maintenance';
 import Calendar from './pages/Calendar';
 import Analytics from './pages/Analytics';
 import Reminders from './pages/Reminders';
+import PaymentHistory from './pages/PaymentHistory';
+import MaintenanceExpenses from './pages/MaintenanceExpenses';
+import Communication from './pages/Communication';
 import Reports from './pages/Reports';
 import { useLocalStorage } from './hooks/useLocalStorage';
 
@@ -131,6 +134,27 @@ export default function App() {
       case 'reminders':
         return (
           <Reminders
+            tenants={tenants}
+            properties={properties}
+          />
+        );
+      case 'paymentHistory':
+        return (
+          <PaymentHistory
+            tenants={tenants}
+            properties={properties}
+          />
+        );
+      case 'maintenanceExpenses':
+        return (
+          <MaintenanceExpenses
+            maintenanceRequests={maintenanceRequests}
+            properties={properties}
+          />
+        );
+      case 'communication':
+        return (
+          <Communication
             tenants={tenants}
             properties={properties}
           />
