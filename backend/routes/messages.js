@@ -176,6 +176,7 @@ router.post(
       conversation.lastMessage = message._id;
       conversation.lastMessageAt = new Date();
       conversation.messageCount += 1;
+      conversation.deletedFor = [];
       await conversation.save();
 
       const populatedMessage = await Message.findById(message._id)

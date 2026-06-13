@@ -68,91 +68,53 @@ export default function TwoFactorAuth({ onVerify, onSkip, email, onTrustDevice }
   };
 
   return (
-    <div className="flex min-h-screen" style={{ backgroundColor: '#f3faff' }}>
+    <div className="flex min-h-screen bg-slate-50">
       {/* Left Side */}
-      <section
-        className="hidden lg:flex lg:w-1/2 relative overflow-hidden flex-col justify-between p-16"
-        style={{
-          background: 'linear-gradient(135deg, #003441 0%, #0f4c5c 100%)',
-        }}
-      >
+      <section className="hidden lg:flex lg:w-1/2 relative overflow-hidden flex-col justify-between p-16 bg-slate-900">
         <div className="relative z-10">
-          <h1
-            className="text-3xl font-extrabold tracking-tight"
-            style={{
-              fontFamily: 'Manrope',
-              color: '#fff',
-            }}
-          >
+          <h1 className="text-3xl font-extrabold tracking-tight text-white mb-2">
             Tenancy Slate
           </h1>
         </div>
 
         <div className="relative z-10 max-w-md">
           <div className="flex items-center gap-3 mb-4">
-            <Shield size={32} style={{ color: '#b6ebfe' }} />
-            <h2
-              className="text-3xl font-bold"
-              style={{
-                fontFamily: 'Manrope',
-                color: '#fff',
-              }}
-            >
+            <Shield size={32} className="text-[#b6ebfe]" />
+            <h2 className="text-3xl font-bold tracking-tight text-white">
               Enhanced Security
             </h2>
           </div>
-          <div className="w-24 h-1 mb-8" style={{ backgroundColor: '#b6ebfe' }} />
-          <p
-            className="text-lg font-medium"
-            style={{ color: '#87bbce' }}
-          >
+          <div className="w-24 h-1 mb-8 bg-[#b6ebfe]" />
+          <p className="text-lg font-medium text-slate-300">
             Two-factor authentication adds an extra layer of protection to your account. Verify your identity with a code from your phone.
           </p>
         </div>
 
         <div className="relative z-10">
-          <p
-            className="text-sm"
-            style={{ color: '#87bbce' }}
-          >
-            ✓ Protects against unauthorized access<br />
-            ✓ Works with authenticator apps<br />
-            ✓ SMS backup codes available
+          <p className="text-sm font-medium text-slate-400 space-y-2">
+            <span className="block">✓ Protects against unauthorized access</span>
+            <span className="block">✓ Works with authenticator apps</span>
+            <span className="block">✓ SMS backup codes available</span>
           </p>
         </div>
       </section>
 
       {/* Right Side */}
-      <section
-        className="w-full lg:w-1/2 flex items-center justify-center p-8 md:p-16 lg:p-24"
-        style={{ backgroundColor: '#f3faff' }}
-      >
+      <section className="w-full lg:w-1/2 flex items-center justify-center p-8 md:p-16 lg:p-24 bg-white">
         <div className="w-full max-w-md">
           {/* Mobile Logo */}
           <div className="lg:hidden mb-12">
-            <h2
-              className="text-2xl font-extrabold tracking-tight"
-              style={{
-                fontFamily: 'Manrope',
-                color: '#003441',
-              }}
-            >
+            <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">
               Tenancy Slate
             </h2>
           </div>
 
           {/* Header */}
           <header className="mb-10">
-            <h2
-              className="text-3xl font-bold tracking-tight mb-2"
-              style={{
-                fontFamily: 'Manrope',
-                color: '#071e27',
-              }}
-            >
+            <h2 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">
               {showBackupCodes ? 'Save Your Backup Codes' : 'Verify Your Identity'}
             </h2>
-            <p style={{ color: '#40484b' }}>
+            <p className="text-sm font-medium text-slate-500">
               {showBackupCodes
                 ? 'Keep these codes in a safe place. You can use them if you lose access to your authenticator.'
                 : `Enter the 6-digit code from your ${verificationMethod === 'sms' ? 'phone' : 'authenticator app'}`}
@@ -163,35 +125,25 @@ export default function TwoFactorAuth({ onVerify, onSkip, email, onTrustDevice }
             <>
               {/* Verification Method Selection */}
               <div className="mb-8 space-y-3">
-                <label style={{ color: '#40484b', fontSize: '0.875rem', fontWeight: '600' }}>
+                <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500">
                   Verification Method
                 </label>
                 <div className="space-y-2">
                   <button
                     type="button"
                     onClick={() => setVerificationMethod('sms')}
-                    className="w-full p-3 rounded-lg text-left transition-all"
-                    style={{
-                      backgroundColor: verificationMethod === 'sms' ? '#e6f6ff' : '#ffffff',
-                      border: `1px solid ${verificationMethod === 'sms' ? '#003441' : '#d5ecf8'}`,
-                      color: '#071e27',
-                    }}
+                    className={`w-full p-4 rounded-xl text-left transition-all border ${verificationMethod === 'sms' ? 'bg-slate-50 border-slate-900' : 'bg-white border-slate-200 hover:border-slate-300'}`}
                   >
-                    <p className="font-semibold text-sm">SMS to {email?.replace(/(.{2})(.*)(@.*)/, '$1***$3')}</p>
-                    <p style={{ fontSize: '0.75rem', color: '#40484b' }}>Receive a code via text message</p>
+                    <p className="font-bold tracking-tight text-slate-900">SMS to {email?.replace(/(.{2})(.*)(@.*)/, 'Ksh 1***Ksh 3')}</p>
+                    <p className="text-xs font-medium text-slate-500 mt-1">Receive a code via text message</p>
                   </button>
                   <button
                     type="button"
                     onClick={() => setVerificationMethod('authenticator')}
-                    className="w-full p-3 rounded-lg text-left transition-all"
-                    style={{
-                      backgroundColor: verificationMethod === 'authenticator' ? '#e6f6ff' : '#ffffff',
-                      border: `1px solid ${verificationMethod === 'authenticator' ? '#003441' : '#d5ecf8'}`,
-                      color: '#071e27',
-                    }}
+                    className={`w-full p-4 rounded-xl text-left transition-all border ${verificationMethod === 'authenticator' ? 'bg-slate-50 border-slate-900' : 'bg-white border-slate-200 hover:border-slate-300'}`}
                   >
-                    <p className="font-semibold text-sm">Authenticator App</p>
-                    <p style={{ fontSize: '0.75rem', color: '#40484b' }}>Use Google Authenticator or similar</p>
+                    <p className="font-bold tracking-tight text-slate-900">Authenticator App</p>
+                    <p className="text-xs font-medium text-slate-500 mt-1">Use Google Authenticator or similar</p>
                   </button>
                 </div>
               </div>
@@ -199,10 +151,7 @@ export default function TwoFactorAuth({ onVerify, onSkip, email, onTrustDevice }
               {/* OTP Input Form */}
               <form onSubmit={handleVerify} className="space-y-6">
                 <div className="space-y-2">
-                  <label
-                    className="block text-sm font-semibold"
-                    style={{ color: '#40484b' }}
-                  >
+                  <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500">
                     Verification Code
                   </label>
                   <input
@@ -212,34 +161,26 @@ export default function TwoFactorAuth({ onVerify, onSkip, email, onTrustDevice }
                     value={otp}
                     onChange={handleOtpChange}
                     maxLength="6"
-                    className="w-full px-4 py-3 rounded-xl text-center text-2xl tracking-widest outline-none transition-all"
-                    style={{
-                      backgroundColor: '#ffffff',
-                      border: `1px solid ${errors.otp ? '#ba1a1a' : '#d5ecf8'}`,
-                      color: '#071e27',
-                      fontFamily: 'monospace',
-                    }}
+                    className={`w-full px-4 py-4 rounded-xl text-center text-3xl font-black tracking-[1em] outline-none transition-all block bg-slate-50 border ${errors.otp ? 'border-[#ba1a1a]' : 'border-slate-200 focus:border-slate-900'} text-slate-900 font-mono pl-8`}
                   />
                   {errors.otp && (
-                    <p style={{ color: '#ba1a1a', fontSize: '0.75rem' }}>
+                    <p className="text-xs font-bold text-[#ba1a1a] mt-2">
                       {errors.otp}
                     </p>
                   )}
                 </div>
 
-                <div className="flex items-center space-x-3 p-4 rounded-xl" style={{ backgroundColor: '#e6f6ff' }}>
+                <div className="flex items-center space-x-3 p-4 rounded-xl bg-slate-50 border border-slate-100">
                   <input
                     type="checkbox"
                     id="trust-device"
                     checked={trustDevice}
                     onChange={(e) => setTrustDevice(e.target.checked)}
-                    className="w-5 h-5 cursor-pointer"
-                    style={{ accentColor: '#003441' }}
+                    className="w-5 h-5 cursor-pointer accent-slate-900 rounded border-slate-300 focus:ring-slate-900"
                   />
                   <label
                     htmlFor="trust-device"
-                    className="flex-1 cursor-pointer text-sm font-medium"
-                    style={{ color: '#003441' }}
+                    className="flex-1 cursor-pointer text-sm font-bold text-slate-700"
                   >
                     Trust this device for 30 days
                   </label>
@@ -248,26 +189,16 @@ export default function TwoFactorAuth({ onVerify, onSkip, email, onTrustDevice }
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-4 px-6 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-[0.98] flex items-center justify-center space-x-2 disabled:opacity-50"
-                  style={{
-                    background: 'linear-gradient(135deg, #003441 0%, #0f4c5c 100%)',
-                    fontFamily: 'Manrope',
-                  }}
+                  className="w-full py-4 px-6 text-white text-[10px] uppercase font-bold tracking-widest rounded-xl transition-all active:scale-[0.98] flex items-center justify-center space-x-2 disabled:opacity-50 bg-slate-900 hover:bg-slate-800"
                 >
                   <span>{isLoading ? 'Verifying...' : 'Verify & Continue'}</span>
-                  <ArrowRight size={20} />
+                  <ArrowRight size={16} />
                 </button>
 
                 <button
                   type="button"
                   onClick={onSkip}
-                  className="w-full py-3 px-6 font-semibold rounded-xl transition-all"
-                  style={{
-                    backgroundColor: '#e6f6ff',
-                    color: '#003441',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#d5ecf8')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#e6f6ff')}
+                  className="w-full py-3 px-6 text-[10px] uppercase font-bold tracking-widest rounded-xl transition-all bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
                 >
                   Skip for Now
                 </button>
@@ -276,54 +207,26 @@ export default function TwoFactorAuth({ onVerify, onSkip, email, onTrustDevice }
           ) : (
             <>
               {/* Backup Codes Display */}
-              <div className="space-y-4">
-                <div
-                  className="p-4 rounded-lg"
-                  style={{
-                    backgroundColor: '#fef3c7',
-                    border: '1px solid #fcd34d',
-                  }}
-                >
-                  <p style={{ fontSize: '0.875rem', color: '#92400e' }}>
+              <div className="space-y-6">
+                <div className="p-4 rounded-xl bg-[#fef3c7]/50 border border-[#f59e0b]/30">
+                  <p className="text-sm font-bold text-[#92400e]">
                     ⚠️ Save these codes in a secure location. Each code can only be used once.
                   </p>
                 </div>
 
-                <div
-                  className="p-4 rounded-lg space-y-2"
-                  style={{
-                    backgroundColor: '#f0f9ff',
-                    border: '1px solid #bae6fd',
-                  }}
-                >
+                <div className="p-6 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-2 gap-4">
                   {backupCodes.map((code, index) => (
                     <div
                       key={index}
-                      className="flex items-center justify-between p-2 rounded"
-                      style={{
-                        backgroundColor: '#ffffff',
-                        border: '1px solid #e0f2fe',
-                      }}
+                      className="flex items-center justify-between p-3 rounded border border-slate-200 bg-white"
                     >
-                      <code
-                        style={{
-                          fontFamily: 'monospace',
-                          color: '#003441',
-                          fontWeight: '600',
-                        }}
-                      >
+                      <code className="font-mono text-sm font-bold text-slate-800">
                         {code}
                       </code>
                       <button
                         type="button"
                         onClick={() => navigator.clipboard.writeText(code)}
-                        className="text-xs px-2 py-1 rounded transition-all"
-                        style={{
-                          backgroundColor: '#e6f6ff',
-                          color: '#003441',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#d5ecf8')}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#e6f6ff')}
+                        className="text-[10px] uppercase font-bold tracking-widest px-3 py-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
                       >
                         Copy
                       </button>
@@ -341,11 +244,7 @@ export default function TwoFactorAuth({ onVerify, onSkip, email, onTrustDevice }
                       codesAcknowledged: true,
                     });
                   }}
-                  className="w-full py-4 px-6 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-[0.98]"
-                  style={{
-                    background: 'linear-gradient(135deg, #003441 0%, #0f4c5c 100%)',
-                    fontFamily: 'Manrope',
-                  }}
+                  className="w-full py-4 px-6 text-white text-[10px] uppercase font-bold tracking-widest rounded-xl transition-all active:scale-[0.98] bg-slate-900 hover:bg-slate-800"
                 >
                   I've Saved My Codes
                 </button>
@@ -355,8 +254,8 @@ export default function TwoFactorAuth({ onVerify, onSkip, email, onTrustDevice }
 
           {/* Footer */}
           <div className="mt-12 text-center">
-            <p className="text-xs" style={{ color: '#70787c' }}>
-              Need help? <a href="#" style={{ color: '#003441', fontWeight: '600' }}>Contact support</a>
+            <p className="text-xs font-semibold text-slate-500">
+              Need help? <a href="#" className="text-slate-900 hover:underline">Contact support</a>
             </p>
           </div>
         </div>

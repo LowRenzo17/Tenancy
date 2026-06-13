@@ -1,15 +1,23 @@
 import React, { useState } from 'react';
 import { useChat } from '../contexts/ChatContext';
-import { Search, Plus, Archive } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { Search, Archive } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
+/**
+ * ConversationList
+ * Design System: The Architectural Ledger
+ * - Uses AuthContext for current user ID (not localStorage)
+ * - Design tokens via CSS variables, not raw Tailwind colors
+ */
 export default function ConversationList({ onSelectConversation }) {
   const { conversations, currentConversation, unreadCount, isUserOnline, fetchMessages, archiveConversation } = useChat();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
 
-  const filteredConversations = conversations.filter((conv) =>
+  const filteredConversations = conversations.filter(conv =>
     conv.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    conv.participantIds?.some((p) => p.fullName?.toLowerCase().includes(searchQuery.toLowerCase()))
+    conv.participantIds?.some(p => p.fullName?.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const handleSelectConversation = (conversation) => {
@@ -25,79 +33,87 @@ export default function ConversationList({ onSelectConversation }) {
   };
 
   return (
-    <div className="w-full md:w-80 bg-white border-r border-gray-200 flex flex-col h-full">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-200">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Messages</h2>
-        {unreadCount > 0 && (
-          <div className="mb-4 p-2 bg-blue-50 rounded-lg">
-            <p className="text-sm text-blue-600 font-medium">{unreadCount} unread messages</p>
-          </div>
-        )}
-        {/* Search */}
+    <div className="flex flex-col h-full">
+      {/* Unread badge */}
+      {unreadCount > 0 && (
+        <div className="mx-3 mt-3 px-3 py-1.5 bg-primary/10 rounded-lg">
+          <p className="text-xs text-primary font-semibold">{unreadCount} unread message{unreadCount !== 1 ? 's' : ''}</p>
+        </div>
+      )}
+
+      {/* Search */}
+      <div className="p-3">
         <div className="relative">
-          <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search conversations..."
+            placeholder="Search conversations…"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full pl-8 pr-3 py-2 border border-border rounded-lg bg-card text-sm outline-none focus:ring-1 focus:ring-primary text-foreground placeholder:text-muted-foreground"
           />
         </div>
       </div>
 
-      {/* Conversations List */}
+      {/* List */}
       <div className="flex-1 overflow-y-auto">
         {filteredConversations.length === 0 ? (
-          <div className="p-4 text-center text-gray-500">
-            <p>No conversations yet</p>
-            <p className="text-sm mt-2">Start a new conversation with a tenant or owner</p>
+          <div className="px-4 py-8 text-center">
+            <p className="text-sm text-muted-foreground">No conversations yet</p>
+            <p className="text-xs text-muted-foreground mt-1">Start a new conversation with the + button above</p>
           </div>
         ) : (
-          filteredConversations.map((conversation) => {
-            const otherParticipant = conversation.participantIds.find((p) => p._id !== localStorage.getItem('userId'));
+          filteredConversations.map(conversation => {
+            // Use auth context user id — not localStorage
+            const myId = user?.id?.toString();
+            const otherParticipant = conversation.participantIds?.find(
+              (p) => (p._id?.toString() || p?.toString()) !== myId
+            );
             const isSelected = currentConversation?._id === conversation._id;
-            const hasUnread = conversation.messageCount > 0; // Simplified check
 
             return (
               <div
                 key={conversation._id}
                 onClick={() => handleSelectConversation(conversation)}
-                className={`p-4 border-b border-gray-100 cursor-pointer transition-colors ${
-                  isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
+                className={`px-4 py-3 border-b border-border cursor-pointer transition-colors ${
+                  isSelected ? 'bg-primary/5 border-l-2 border-l-primary' : 'hover:bg-secondary/40'
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className={`text-sm font-semibold truncate ${hasUnread ? 'text-gray-900' : 'text-gray-700'}`}>
-                        {otherParticipant?.fullName || conversation.subject || 'Unnamed Conversation'}
-                      </h3>
-                      {isUserOnline(otherParticipant?._id) && (
-                        <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
+                  <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                    {/* Avatar */}
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-xs font-bold text-primary">
+                        {(otherParticipant?.fullName || conversation.subject || '?')[0]?.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <h3 className="text-sm font-semibold text-foreground truncate">
+                          {otherParticipant?.fullName || conversation.subject || 'Conversation'}
+                        </h3>
+                        {isUserOnline(otherParticipant?._id?.toString() || otherParticipant?.toString()) && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                        )}
+                      </div>
+                      {conversation.lastMessage?.content && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {conversation.lastMessage.content}
+                        </p>
+                      )}
+                      {conversation.lastMessageAt && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {formatDistanceToNow(new Date(conversation.lastMessageAt), { addSuffix: true })}
+                        </p>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 truncate">
-                      {otherParticipant?.email}
-                    </p>
-                    {conversation.lastMessage && (
-                      <p className="text-xs text-gray-600 truncate mt-1">
-                        {conversation.lastMessage.content}
-                      </p>
-                    )}
-                    {conversation.lastMessageAt && (
-                      <p className="text-xs text-gray-400 mt-1">
-                        {formatDistanceToNow(new Date(conversation.lastMessageAt), { addSuffix: true })}
-                      </p>
-                    )}
                   </div>
                   <button
-                    onClick={(e) => handleArchive(e, conversation._id)}
-                    className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
+                    onClick={e => handleArchive(e, conversation._id)}
+                    className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary rounded transition-colors shrink-0 mt-0.5 opacity-0 group-hover:opacity-100"
                     title="Archive conversation"
                   >
-                    <Archive className="w-4 h-4" />
+                    <Archive className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>

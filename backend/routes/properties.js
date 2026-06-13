@@ -88,6 +88,12 @@ router.post(
 
       await property.save();
 
+      // Emit socket event for real-time update
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('property-created', property);
+      }
+
       res.status(201).json({
         success: true,
         property,
@@ -134,6 +140,12 @@ router.put('/:id', protect, authorize('owner'), async (req, res) => {
 
     property = await property.save();
 
+    // Emit socket event for real-time update
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('property-updated', property);
+    }
+
     res.json({
       success: true,
       property,
@@ -161,6 +173,12 @@ router.delete('/:id', protect, authorize('owner'), async (req, res) => {
 
     await Property.findByIdAndDelete(req.params.id);
 
+    // Emit socket event for real-time update
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('property-deleted', { propertyId: req.params.id });
+    }
+
     res.json({
       success: true,
       message: 'Property deleted',
@@ -172,8 +190,8 @@ router.delete('/:id', protect, authorize('owner'), async (req, res) => {
 
 // @route   GET /api/properties/:id/maintenance-history
 // @desc    Get property maintenance history
-// @access  Private
-router.get('/:id/maintenance-history', protect, async (req, res) => {
+// @access  Private (Owner only)
+router.get('/:id/maintenance-history', protect, authorize('owner'), async (req, res) => {
   try {
     const property = await Property.findById(req.params.id);
 
@@ -181,12 +199,17 @@ router.get('/:id/maintenance-history', protect, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Property not found' });
     }
 
+    // Verify requesting user owns this property
+    if (property.ownerId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
     res.json({
       success: true,
       maintenanceHistory: property.maintenanceHistory,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Server Error' });
   }
 });
 

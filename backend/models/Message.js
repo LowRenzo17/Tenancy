@@ -45,13 +45,25 @@ const messageSchema = new mongoose.Schema(
       enum: ['low', 'normal', 'high'],
       default: 'normal',
     },
-    createdAt: {
-      type: Date,
-      default: Date.now,
+    // Soft-delete: message stays in DB but is hidden per-user
+    deletedFor: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    }],
+    // Emoji reactions: { userId: emoji }
+    reactions: {
+      type: Map,
+      of: String,
+      default: {},
     },
-    updatedAt: {
+    // Edit tracking
+    edited: {
+      type: Boolean,
+      default: false,
+    },
+    editedAt: {
       type: Date,
-      default: Date.now,
+      default: null,
     },
   },
   { timestamps: true }

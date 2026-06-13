@@ -6,10 +6,11 @@ import { SocketProvider, useSocket } from './contexts/SocketContext';
 import { ChatProvider } from './contexts/ChatContext';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import Sidebar from './components/Sidebar';
-import SessionTimeoutWarning from './components/SessionTimeoutWarning';
-import NotificationCenter from './components/NotificationCenter';
+import { GoogleOAuthProvider } from '@react-oauth/google';
+import { Toaster } from '@/components/ui/sonner';
 
 // Import pages
+import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
@@ -33,17 +34,73 @@ import TrustedDevices from './pages/TrustedDevices';
 import MyLease from './pages/MyLease';
 import MyPayments from './pages/MyPayments';
 import Chat from './pages/Chat';
+import AcceptInvite from './pages/AcceptInvite';
+import { getResetTokenFromUrl } from './lib/passwordResetUtils';
 
 /**
  * Main Router Component
  * Handles routing and page rendering
  */
 function AppRouter() {
-  const { isAuthenticated, user, loading, logout } = useAuth();
-  const { properties, tenants, maintenance } = useData();
+  const { isAuthenticated, user, loading, logout, login, googleLogin, signup, verify2FA, forcePasswordReset } = useAuth();
+  const { 
+    properties, 
+    tenants, 
+    maintenance,
+    createProperty,
+    updateProperty,
+    deleteProperty,
+    createTenant,
+    updateTenant,
+    deleteTenant,
+    createMaintenanceRequest,
+    updateMaintenanceRequest,
+    deleteMaintenanceRequest,
+    createPayment,
+    updatePayment,
+    deletePayment,
+  } = useData();
   const [currentPage, setCurrentPage] = useState('dashboard');
-  const [showSessionWarning, setShowSessionWarning] = useState(false);
-  const [sessionTimeRemaining, setSessionTimeRemaining] = useState(60);
+
+  const handleLogout = () => {
+    logout();
+    setCurrentPage('dashboard');
+  };
+
+  // ── Silent auto-logout after 15 minutes of inactivity ─────────────────────
+  // Only runs when the user is authenticated (never fires on login/signup pages)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let idleTimer;
+
+    const resetIdleTimer = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        logout();
+        setCurrentPage('dashboard');
+      }, 15 * 60 * 1000); // 15 minutes
+    };
+
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+    events.forEach(e => document.addEventListener(e, resetIdleTimer, { passive: true }));
+    resetIdleTimer();
+
+    return () => {
+      clearTimeout(idleTimer);
+      events.forEach(e => document.removeEventListener(e, resetIdleTimer));
+    };
+  }, [isAuthenticated]);
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // ── Auto-logout if visiting a guest token page while authenticated ────────
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (isAuthenticated && (path === '/reset-password' || path === '/invite/accept')) {
+      logout();
+    }
+  }, [isAuthenticated, logout]);
+  // ──────────────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -58,14 +115,111 @@ function AppRouter() {
 
   // Show login/signup if not authenticated
   if (!isAuthenticated) {
+    const navigate = (path) => {
+      window.location.pathname = path;
+    };
+
+    const resetToken = getResetTokenFromUrl();
+    const verifyEmail = new URLSearchParams(window.location.search).get('email') || undefined;
+
+    const handleLogin = async (email, password, loginType) => {
+      const response = await login(email, password, loginType);
+
+      if (response?.requiresTwoFactor) {
+        navigate(`/verify-2fa?email=${encodeURIComponent(email)}`);
+      }
+
+      return response;
+    };
+
+    const handleGoogleLogin = async (token, loginType) => {
+      const response = await googleLogin(token, loginType);
+
+      // We might not know email yet, but we pass generic if requires 2fa
+      if (response?.requiresTwoFactor) {
+        navigate(`/verify-2fa?email=google-account`); 
+      }
+
+      return response;
+    };
+
+    const handleSignup = async (fullName, email, password, accountType) => {
+      return signup(fullName, email, password, accountType);
+    };
+
+    const handleForgotPasswordBack = () => navigate('/login');
+    const handleResetDone = () => navigate('/login');
+
+    const handleVerify = async (code) => {
+      await verify2FA(code);
+      setCurrentPage('dashboard');
+      navigate('/');
+    };
+
+    const handleSkip2FA = () => {
+      logout();
+      navigate('/login');
+    };
+
     return (
       <Switch>
-        <Route path="/login" component={Login} />
-        <Route path="/signup" component={Signup} />
-        <Route path="/forgot-password" component={ForgotPassword} />
-        <Route path="/reset-password" component={ResetPassword} />
-        <Route path="/verify-2fa" component={TwoFactorAuth} />
-        <Route component={Login} />
+        <Route path="/login">
+          {() => (
+            <Login
+              onLogin={handleLogin}
+              onGoogleLogin={handleGoogleLogin}
+              onSignupClick={() => navigate('/signup')}
+              onForgotPassword={() => navigate('/forgot-password')}
+              onForcePasswordReset={forcePasswordReset}
+            />
+          )}
+        </Route>
+        <Route path="/signup">
+          {() => (
+            <Signup
+              onSignup={handleSignup}
+              onLoginClick={() => navigate('/login')}
+            />
+          )}
+        </Route>
+        <Route path="/forgot-password">
+          {() => (
+            <ForgotPassword
+              onBack={handleForgotPasswordBack}
+              onResetSent={() => {}}
+            />
+          )}
+        </Route>
+        <Route path="/reset-password">
+          {() => (
+            <ResetPassword
+              token={new URLSearchParams(window.location.search).get('token')}
+              onResetComplete={handleResetDone}
+              onBack={handleForgotPasswordBack}
+            />
+          )}
+        </Route>
+        <Route path="/verify-2fa">
+          {() => (
+            <TwoFactorAuth
+              onVerify={handleVerify}
+              onSkip={handleSkip2FA}
+              email={verifyEmail}
+              onTrustDevice={undefined}
+            />
+          )}
+        </Route>
+        <Route path="/invite/accept">
+          {() => (
+            <AcceptInvite
+              token={new URLSearchParams(window.location.search).get('token')}
+            />
+          )}
+        </Route>
+        <Route path="/">
+          {() => <Landing />}
+        </Route>
+        <Route>{() => <Landing />}</Route>
       </Switch>
     );
   }
@@ -76,15 +230,37 @@ function AppRouter() {
 
     switch (pageToRender) {
       case 'dashboard':
-        return <Dashboard properties={properties} tenants={tenants} maintenanceRequests={maintenance} />;
+        return <Dashboard properties={properties} tenants={tenants} maintenanceRequests={maintenance} onPageChange={setCurrentPage} />;
       case 'tenantDashboard':
-        return <TenantDashboard currentUser={user} />;
+        return <TenantDashboard currentUser={user} onPageChange={setCurrentPage} />;
       case 'properties':
-        return <Properties properties={properties} />;
+        return (
+          <Properties 
+            properties={properties} 
+            onAddProperty={createProperty}
+            onUpdateProperty={updateProperty}
+            onDeleteProperty={deleteProperty}
+          />
+        );
       case 'tenants':
-        return <Tenants tenants={tenants} properties={properties} />;
+        return (
+          <Tenants 
+            tenants={tenants} 
+            properties={properties} 
+            onAddTenant={createTenant}
+            onUpdateTenant={updateTenant}
+            onDeleteTenant={deleteTenant}
+          />
+        );
       case 'maintenance':
-        return <Maintenance maintenanceRequests={maintenance} properties={properties} />;
+        return (
+          <Maintenance 
+            maintenanceRequests={maintenance} 
+            properties={properties} 
+            onUpdateStatus={(id, status) => updateMaintenanceRequest(id, { status })}
+            onDeleteRequest={deleteMaintenanceRequest}
+          />
+        );
       case 'calendar':
         return <RentCalendar tenants={tenants} properties={properties} />;
       case 'analytics':
@@ -95,8 +271,7 @@ function AppRouter() {
         return <PaymentHistory tenants={tenants} properties={properties} />;
       case 'maintenanceExpenses':
         return <MaintenanceExpenses maintenanceRequests={maintenance} properties={properties} />;
-      case 'communication':
-        return <Communication tenants={tenants} properties={properties} />;
+
       case 'reports':
         return <Reports properties={properties} tenants={tenants} maintenanceRequests={maintenance} />;
       case 'loginHistory':
@@ -104,87 +279,62 @@ function AppRouter() {
       case 'trustedDevices':
         return <TrustedDevices currentUser={user} />;
       case 'myLease':
-        return <MyLease currentUser={user} />;
+        return <MyLease currentUser={user} onPageChange={setCurrentPage} />;
       case 'myPayments':
-        return <MyPayments currentUser={user} />;
+        return <MyPayments currentUser={user} onPageChange={setCurrentPage} />;
       case 'submitMaintenance':
-        return <SubmitMaintenance currentUser={user} />;
+        return <SubmitMaintenance currentUser={user} onPageChange={setCurrentPage} />;
       case 'chat':
-        return <Chat />;
+        return user?.accountType === 'owner' ? <Communication tenants={tenants} properties={properties} /> : <Chat />;
       default:
         return <Dashboard properties={properties} tenants={tenants} maintenanceRequests={maintenance} />;
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    setCurrentPage('dashboard');
-  };
-
-  const handleSessionTimeout = () => {
-    setShowSessionWarning(true);
-    setSessionTimeRemaining(60);
-  };
-
-  const handleExtendSession = () => {
-    setShowSessionWarning(false);
-  };
-
-  // Handle session warning timeout
-  useEffect(() => {
-    if (!showSessionWarning) return;
-    if (sessionTimeRemaining <= 0) {
-      handleLogout();
-      return;
-    }
-    const timer = setTimeout(() => {
-      setSessionTimeRemaining(prev => prev - 1);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [showSessionWarning, sessionTimeRemaining]);
-
   return (
     <>
-      <div className="flex h-screen" style={{ backgroundColor: '#f3faff' }}>
+      <div className="flex h-screen mesh-bg relative overflow-hidden">
         {/* Sidebar Navigation */}
         <Sidebar currentPage={currentPage} onPageChange={setCurrentPage} currentUser={user} onLogout={handleLogout} />
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-auto md:ml-0">
-          <div className="p-6 md:p-8 lg:p-10 max-w-7xl mx-auto">
+        <main className="flex-1 overflow-auto w-full min-w-0">
+          <div className="p-4 pt-16 md:pt-8 md:p-8 lg:p-10 max-w-7xl mx-auto">
             {renderPage()}
           </div>
         </main>
 
-        {/* Session Timeout Warning */}
-        <SessionTimeoutWarning
-          isVisible={showSessionWarning}
-          timeRemaining={sessionTimeRemaining}
-          onExtend={handleExtendSession}
-          onLogout={handleLogout}
-        />
+        {/* Silent auto-logout after 15 min inactivity — no modal shown */}
       </div>
-      <NotificationCenter />
+      <Toaster />
     </>
   );
 }
+
+import { HelmetProvider } from 'react-helmet-async';
 
 /**
  * Main App Component
  * Wraps the app with context providers
  */
 export default function App() {
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '1234567890-mock.apps.googleusercontent.com';
+
   return (
-    <AuthProvider>
-      <DataProvider>
-        <SocketProvider>
-          <ChatProvider>
-            <TooltipProvider>
-              <AppRouter />
-            </TooltipProvider>
-          </ChatProvider>
-        </SocketProvider>
-      </DataProvider>
-    </AuthProvider>
+    <GoogleOAuthProvider clientId={googleClientId}>
+      <HelmetProvider>
+        <AuthProvider>
+          <SocketProvider>
+            <DataProvider>
+              <ChatProvider>
+                <TooltipProvider>
+                  <AppRouter />
+                </TooltipProvider>
+              </ChatProvider>
+            </DataProvider>
+          </SocketProvider>
+        </AuthProvider>
+      </HelmetProvider>
+    </GoogleOAuthProvider>
   );
 }

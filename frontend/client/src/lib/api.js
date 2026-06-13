@@ -8,26 +8,59 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 class ApiClient {
   constructor() {
     this.baseURL = API_BASE_URL;
-    this.token = localStorage.getItem('token');
+    // sessionStorage is tab-scoped — protects other logged-in users in other tabs
+    // localStorage is browser-wide — used only for persisting the main session across page reloads
+    this.token = sessionStorage.getItem('token') || localStorage.getItem('token');
   }
 
   /**
-   * Set authentication token
+   * Set token for current tab only (temporary: 2FA, force-reset).
+   * Does NOT touch localStorage so other tabs/users are unaffected.
    */
   setToken(token) {
     this.token = token;
     if (token) {
-      localStorage.setItem('token', token);
+      sessionStorage.setItem('token', token);
     } else {
+      sessionStorage.removeItem('token');
       localStorage.removeItem('token');
     }
   }
 
   /**
-   * Get authentication token
+   * Set token persistently across browser restarts (successful full login).
+   * Writes to both sessionStorage (immediate) and localStorage (persistence).
+   */
+  setPersistentToken(token) {
+    this.token = token;
+    if (token) {
+      sessionStorage.setItem('token', token);
+      localStorage.setItem('token', token);
+    } else {
+      sessionStorage.removeItem('token');
+      localStorage.removeItem('token');
+    }
+  }
+
+  /**
+   * Get authentication token — prefer sessionStorage (tab-scoped) over localStorage
    */
   getToken() {
-    return this.token || localStorage.getItem('token');
+    return this.token || sessionStorage.getItem('token') || localStorage.getItem('token');
+  }
+
+  logout() {
+    this.setPersistentToken(null);
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
+  }
+
+  handleUnauthorized() {
+    this.setPersistentToken(null);
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
   }
 
   /**
@@ -51,10 +84,21 @@ class ApiClient {
         headers,
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (_err) {
+        data = null;
+      }
 
       if (!response.ok) {
-        throw new Error(data.message || `HTTP ${response.status}`);
+        // 401 = token expired / not authenticated → force logout
+        // 403 = forbidden (permission denied) → let the caller handle it, do NOT redirect
+        if (response.status === 401) {
+          this.handleUnauthorized();
+        }
+        const message = data?.message || `HTTP ${response.status}`;
+        throw new Error(message);
       }
 
       return data;
@@ -106,8 +150,12 @@ class ApiClient {
     return this.post('/auth/signup', data);
   }
 
-  login(email, password) {
-    return this.post('/auth/login', { email, password });
+  login(email, password, accountType) {
+    return this.post('/auth/login', { email, password, accountType });
+  }
+
+  googleLogin(token, accountType) {
+    return this.post('/auth/google', { token, accountType });
   }
 
   verify2FA(code) {
@@ -130,8 +178,16 @@ class ApiClient {
     return this.post('/auth/forgot-password', { email });
   }
 
+  validateResetToken(token) {
+    return this.get(`/auth/validate-reset-token/${token}`);
+  }
+
   resetPassword(token, password) {
     return this.post('/auth/reset-password', { token, password });
+  }
+
+  forcePasswordReset(tempToken, newPassword) {
+    return this.post('/auth/force-password-reset', { tempToken, newPassword });
   }
 
   getCurrentUser() {
@@ -190,6 +246,10 @@ class ApiClient {
     return this.get('/tenants');
   }
 
+  getMyTenantProfile() {
+    return this.get('/tenants/me/profile');
+  }
+
   getTenant(id) {
     return this.get(`/tenants/${id}`);
   }
@@ -212,6 +272,14 @@ class ApiClient {
 
   updateTenantRentStatus(id, rentStatus) {
     return this.put(`/tenants/${id}/rent-status`, { rentStatus });
+  }
+
+  validateInviteToken(token) {
+    return this.get(`/tenants/invite/validate/${token}`);
+  }
+
+  acceptInvite(token, data) {
+    return this.post(`/tenants/invite/accept/${token}`, data);
   }
 
   // ============ MAINTENANCE ENDPOINTS ============
@@ -252,6 +320,10 @@ class ApiClient {
 
   createPayment(data) {
     return this.post('/payments', data);
+  }
+
+  submitTenantPayment(data) {
+    return this.post('/payments/tenant-pay', data);
   }
 
   updatePayment(id, data) {

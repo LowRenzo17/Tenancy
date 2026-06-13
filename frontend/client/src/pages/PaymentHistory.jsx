@@ -1,166 +1,228 @@
 import { useState } from 'react';
-import { CreditCard, Download, Filter, Search } from 'lucide-react';
+import { CreditCard, Download, Search, CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react';
 import Card from '../components/Card';
 import StatusBadge from '../components/StatusBadge';
+import { formatCurrency } from '../lib/utils';
+import { useData } from '../contexts/DataContext';
+import apiClient from '../lib/api';
+import { toast } from 'sonner';
 
 /**
- * Payment History Page
+ * Payment History Page — Owner View
  * Design System: The Architectural Ledger
- * - Detailed payment transaction ledger per tenant
- * - Payment tracking and history management
+ * - Real payment data from DataContext (Payment collection)
+ * - Owner can Confirm (→ paid) or Reject (→ overdue) pending submissions
  */
 export default function PaymentHistory({ tenants, properties }) {
-  const [selectedTenant, setSelectedTenant] = useState(null);
+  const { payments: allPayments, updatePayment, fetchPayments } = useData();
+  const [selectedTenantId, setSelectedTenantId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [confirmingId, setConfirmingId] = useState(null);
 
-  // Generate mock payment history for each tenant
-  const generatePaymentHistory = (tenant) => {
-    const history = [];
-    const currentDate = new Date();
-
-    // Generate 6 months of payment history
-    for (let i = 0; i < 6; i++) {
-      const monthDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
-      const status = i === 0 ? tenant.rentStatus : (Math.random() > 0.2 ? 'paid' : 'pending');
-      const amount = tenant.rentAmount || 1500;
-
-      history.push({
-        id: `payment-${tenant.id}-${i}`,
-        tenantId: tenant.id,
-        date: monthDate,
-        dueDate: new Date(monthDate.getFullYear(), monthDate.getMonth(), 1),
-        amount: amount,
-        status: status,
-        method: status === 'paid' ? ['Bank Transfer', 'Check', 'Credit Card'][Math.floor(Math.random() * 3)] : null,
-        reference: status === 'paid' ? `TXN-${Math.random().toString(36).substr(2, 9).toUpperCase()}` : null,
-      });
-    }
-
-    return history.sort((a, b) => b.date - a.date);
-  };
-
+  // ── Filtered tenant list ───────────────────────────────────────────────────
   const filteredTenants = tenants.filter(t =>
-    t.name.toLowerCase().includes(searchTerm.toLowerCase())
+    (t.name || t.fullName || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const selectedTenantData = selectedTenant
-    ? tenants.find(t => t.id === selectedTenant)
+  const selectedTenantData = selectedTenantId
+    ? tenants.find(t => (t.id || t._id) === selectedTenantId)
     : null;
 
   const selectedProperty = selectedTenantData
-    ? properties.find(p => p.id === parseInt(selectedTenantData.propertyId))
+    ? properties.find(p =>
+        (p._id || p.id)?.toString() === selectedTenantData.propertyId?.toString() ||
+        (p._id || p.id)?.toString() === selectedTenantData.assignedProperty?.toString()
+      )
     : null;
 
-  const paymentHistory = selectedTenantData
-    ? generatePaymentHistory(selectedTenantData)
+  // ── Real payments from DataContext filtered for selected tenant ────────────
+  const tenantPayments = selectedTenantId
+    ? (allPayments || [])
+        .filter(p => {
+          const tid = (p.tenantId?._id || p.tenantId)?.toString();
+          return tid === selectedTenantId?.toString();
+        })
+        .map(p => ({
+          _id: p._id,
+          date: p.paymentDate ? new Date(p.paymentDate) : new Date(p.createdAt || p.month),
+          dueDate: p.dueDate ? new Date(p.dueDate) : new Date(p.month),
+          amount: p.totalAmount || p.amount || 0,
+          status: p.status || 'pending',
+          method: (p.paymentMethod || '').replace(/-/g, ' '),
+          reference: p.transactionId || null,
+          notes: p.notes || null,
+        }))
+        .sort((a, b) => b.date - a.date)
     : [];
 
+  // Apply status filter
   const filteredHistory = filterStatus === 'all'
-    ? paymentHistory
-    : paymentHistory.filter(p => p.status === filterStatus);
+    ? tenantPayments
+    : tenantPayments.filter(p => p.status === filterStatus);
 
-  // Calculate summary statistics
-  const totalPaid = paymentHistory
-    .filter(p => p.status === 'paid')
-    .reduce((sum, p) => sum + p.amount, 0);
-
-  const totalPending = paymentHistory
-    .filter(p => p.status === 'pending')
-    .reduce((sum, p) => sum + p.amount, 0);
-
-  const paymentRate = paymentHistory.length > 0
-    ? Math.round((paymentHistory.filter(p => p.status === 'paid').length / paymentHistory.length) * 100)
+  // ── Summary stats ─────────────────────────────────────────────────────────
+  const totalPaid     = tenantPayments.filter(p => p.status === 'paid').reduce((s, p) => s + p.amount, 0);
+  const totalPending  = tenantPayments.filter(p => p.status === 'pending').reduce((s, p) => s + p.amount, 0);
+  const paymentRate   = tenantPayments.length > 0
+    ? Math.round((tenantPayments.filter(p => p.status === 'paid').length / tenantPayments.length) * 100)
     : 0;
+  const pendingCount  = tenantPayments.filter(p => p.status === 'pending').length;
 
+  // ── Confirm payment ───────────────────────────────────────────────────────
+  const handleConfirm = async (payment) => {
+    setConfirmingId(payment._id + '_confirm');
+    try {
+      await apiClient.updatePayment(payment._id, {
+        status: 'paid',
+        paymentDate: new Date().toISOString(),
+      });
+      await fetchPayments();
+      toast.success('Payment confirmed — tenant ledger updated to Paid ✓');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to confirm payment');
+    } finally {
+      setConfirmingId(null);
+    }
+  };
+
+  // ── Reject payment ────────────────────────────────────────────────────────
+  const handleReject = async (payment) => {
+    setConfirmingId(payment._id + '_reject');
+    try {
+      await apiClient.updatePayment(payment._id, {
+        status: 'overdue',
+        notes: (payment.notes || '') + ' [Rejected by owner]',
+      });
+      await fetchPayments();
+      toast.warning('Payment rejected — marked as Overdue');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to reject payment');
+    } finally {
+      setConfirmingId(null);
+    }
+  };
+
+  // ── CSV Export ────────────────────────────────────────────────────────────
   const downloadCSV = () => {
-    if (!selectedTenantData) return;
+    if (!selectedTenantData || tenantPayments.length === 0) {
+      toast.error('No payment records to export');
+      return;
+    }
+    const BOM = '\uFEFF';
+    const escapeCSV = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const fmt = (n) => `KSh ${Number(n || 0).toLocaleString('en-KE')}`;
+    const todayStr = new Date().toLocaleDateString('en-KE', { year: 'numeric', month: 'long', day: 'numeric' });
 
-    let csv = 'Payment History Report\n';
-    csv += `Tenant: ${selectedTenantData.name}\n`;
-    csv += `Property: ${selectedProperty?.name || 'N/A'}\n`;
-    csv += `Generated: ${new Date().toLocaleDateString()}\n\n`;
-    csv += 'Date,Due Date,Amount,Status,Payment Method,Reference\n';
+    const metaRows = [
+      ['EstateLedger — Payment History Report'],
+      [`Generated: ${todayStr}`],
+      [`Tenant: ${selectedTenantData.name || selectedTenantData.fullName}`],
+      [`Property: ${selectedProperty?.name || 'N/A'}`],
+      [`Monthly Rent: ${fmt(selectedTenantData.rentAmount)}`],
+      [`Total Records: ${tenantPayments.length}`],
+      [`On-time Rate: ${paymentRate}%  |  Confirmed Collected: ${fmt(totalPaid)}`],
+      [],
+      ['Date', 'Due Date', 'Amount (KSh)', 'Status', 'Method', 'Reference / Notes'],
+    ];
 
-    paymentHistory.forEach(payment => {
-      csv += `${payment.date.toLocaleDateString()},${payment.dueDate.toLocaleDateString()},$${payment.amount},${payment.status},${payment.method || 'N/A'},${payment.reference || 'N/A'}\n`;
-    });
+    const dataRows = tenantPayments.map(p => [
+      p.date.toLocaleDateString('en-KE'),
+      p.dueDate.toLocaleDateString('en-KE'),
+      p.amount,
+      p.status.charAt(0).toUpperCase() + p.status.slice(1),
+      p.method || '—',
+      p.reference || p.notes || '—',
+    ]);
 
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
+    const content = BOM + [...metaRows, ...dataRows]
+      .map(row => row.map(escapeCSV).join(','))
+      .join('\r\n');
+
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `payment-history-${selectedTenantData.name.replace(/\s+/g, '-')}.csv`;
+    a.download = `EL-Payments-${(selectedTenantData.name || 'Tenant').replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('CSV exported');
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-8">
       {/* Page Header */}
-      <div>
-        <h1 className="text-4xl font-bold mb-2" style={{ fontFamily: 'Manrope', color: '#071e27' }}>
-          Payment History
-        </h1>
-        <p style={{ color: '#40484b' }}>Track detailed payment transactions and history for each tenant</p>
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border pb-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground mb-1">Payment History</h1>
+          <p className="text-sm text-muted-foreground">
+            Review tenant payment submissions and confirm or reject them.
+          </p>
+        </div>
+        {pendingCount > 0 && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm font-semibold text-amber-700">
+            <Clock size={15} />
+            {pendingCount} payment{pendingCount !== 1 ? 's' : ''} awaiting confirmation
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Tenant Selection Sidebar */}
+        {/* Tenant Sidebar */}
         <div>
-          <Card variant="elevated" className="p-4">
-            <h3 className="text-lg font-semibold mb-4" style={{ fontFamily: 'Manrope', color: '#071e27' }}>
-              Select Tenant
-            </h3>
-
-            {/* Search */}
+          <Card variant="elevated" className="p-6 bg-white overflow-hidden flex flex-col h-[520px]">
+            <h3 className="text-lg font-bold tracking-tight text-foreground mb-4">Select Tenant</h3>
             <div className="relative mb-4">
-              <Search size={18} style={{ position: 'absolute', left: '12px', top: '10px', color: '#40484b' }} />
+              <Search size={16} className="absolute left-3 top-2.5 text-muted-foreground" />
               <input
                 type="text"
                 placeholder="Search tenants..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 rounded-lg"
-                style={{
-                  backgroundColor: '#f3faff',
-                  border: '1px solid #d5ecf8',
-                  color: '#071e27',
-                }}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-secondary/30 border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary transition-all"
               />
             </div>
-
-            {/* Tenant List */}
-            <div className="space-y-2 max-h-96 overflow-y-auto">
+            <div className="space-y-1.5 overflow-y-auto flex-1 pr-1">
               {filteredTenants.length > 0 ? (
-                filteredTenants.map(tenant => (
-                  <button
-                    key={tenant.id}
-                    onClick={() => setSelectedTenant(tenant.id)}
-                    className="w-full text-left p-3 rounded-lg transition-all"
-                    style={{
-                      backgroundColor: selectedTenant === tenant.id ? '#e6f6ff' : 'transparent',
-                      borderLeft: selectedTenant === tenant.id ? '3px solid #003441' : '3px solid transparent',
-                      color: selectedTenant === tenant.id ? '#003441' : '#40484b',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (selectedTenant !== tenant.id) {
-                        e.target.style.backgroundColor = '#f3faff';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (selectedTenant !== tenant.id) {
-                        e.target.style.backgroundColor = 'transparent';
-                      }
-                    }}
-                  >
-                    <p className="font-semibold text-sm">{tenant.name}</p>
-                    <p className="text-xs mt-1" style={{ color: '#40484b' }}>
-                      ${tenant.rentAmount?.toLocaleString() || '0'}/month
-                    </p>
-                  </button>
-                ))
+                filteredTenants.map(tenant => {
+                  const tid = tenant.id || tenant._id;
+                  const isSelected = selectedTenantId === tid;
+                  const tenantPendingCount = (allPayments || []).filter(p => {
+                    const pid = (p.tenantId?._id || p.tenantId)?.toString();
+                    return pid === tid?.toString() && p.status === 'pending';
+                  }).length;
+                  return (
+                    <button
+                      key={tid}
+                      onClick={() => setSelectedTenantId(tid)}
+                      className={`w-full text-left p-3 rounded-lg transition-all border-l-4 ${
+                        isSelected
+                          ? 'bg-primary/5 border-l-primary text-primary'
+                          : 'bg-transparent border-l-transparent text-foreground hover:bg-secondary/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className={`font-bold text-sm tracking-tight ${isSelected ? 'text-primary' : 'text-foreground'}`}>
+                          {tenant.name || tenant.fullName}
+                        </p>
+                        {tenantPendingCount > 0 && (
+                          <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full">
+                            <Clock size={9} /> {tenantPendingCount}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-xs font-semibold mt-0.5 ${isSelected ? 'text-primary/70' : 'text-muted-foreground'}`}>
+                        {formatCurrency(tenant.rentAmount)}/month
+                      </p>
+                    </button>
+                  );
+                })
               ) : (
-                <p style={{ color: '#40484b' }}>No tenants found</p>
+                <p className="text-xs text-muted-foreground text-center py-6">No tenants found</p>
               )}
             </div>
           </Card>
@@ -172,153 +234,191 @@ export default function PaymentHistory({ tenants, properties }) {
             <>
               {/* Summary Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card variant="elevated" className="p-4">
-                  <p className="text-xs mb-2" style={{ color: '#40484b' }}>Total Paid</p>
-                  <p className="text-2xl font-bold" style={{ fontFamily: 'Manrope', color: '#166534' }}>
-                    ${totalPaid.toLocaleString()}
-                  </p>
-                  <p className="text-xs mt-2" style={{ color: '#40484b' }}>
-                    {paymentHistory.filter(p => p.status === 'paid').length} payments
+                <Card variant="elevated" className="p-5 bg-white border-b-4 border-b-emerald-600">
+                  <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground mb-2">Confirmed Paid</p>
+                  <p className="text-2xl font-black tracking-tight text-emerald-800">{formatCurrency(totalPaid)}</p>
+                  <p className="text-xs font-semibold text-muted-foreground mt-1.5">
+                    {tenantPayments.filter(p => p.status === 'paid').length} confirmed
                   </p>
                 </Card>
-
-                <Card variant="elevated" className="p-4">
-                  <p className="text-xs mb-2" style={{ color: '#40484b' }}>Outstanding</p>
-                  <p className="text-2xl font-bold" style={{ fontFamily: 'Manrope', color: '#ba1a1a' }}>
-                    ${totalPending.toLocaleString()}
-                  </p>
-                  <p className="text-xs mt-2" style={{ color: '#40484b' }}>
-                    {paymentHistory.filter(p => p.status === 'pending').length} pending
+                <Card variant="elevated" className="p-5 bg-white border-b-4 border-b-amber-500">
+                  <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground mb-2">Pending Approval</p>
+                  <p className="text-2xl font-black tracking-tight text-amber-700">{formatCurrency(totalPending)}</p>
+                  <p className="text-xs font-semibold text-muted-foreground mt-1.5">
+                    {pendingCount} awaiting your confirmation
                   </p>
                 </Card>
-
-                <Card variant="elevated" className="p-4">
-                  <p className="text-xs mb-2" style={{ color: '#40484b' }}>Payment Rate</p>
-                  <p className="text-2xl font-bold" style={{ fontFamily: 'Manrope', color: '#003441' }}>
-                    {paymentRate}%
-                  </p>
-                  <p className="text-xs mt-2" style={{ color: '#40484b' }}>
-                    On-time payments
-                  </p>
+                <Card variant="elevated" className="p-5 bg-primary/5 border-b-4 border-b-primary">
+                  <p className="text-[10px] uppercase font-bold tracking-widest text-primary/80 mb-2">Confirmation Rate</p>
+                  <p className="text-2xl font-black tracking-tight text-primary">{paymentRate}%</p>
+                  <p className="text-xs font-semibold text-primary/70 mt-1.5">Of {tenantPayments.length} total records</p>
                 </Card>
               </div>
 
-              {/* Tenant Info */}
-              <Card variant="subtle" className="p-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-lg font-semibold" style={{ color: '#071e27' }}>
-                      {selectedTenantData.name}
-                    </h3>
-                    <p style={{ color: '#40484b' }}>
-                      {selectedProperty?.name || 'Unknown Property'}
-                    </p>
-                    <p className="text-sm mt-2" style={{ color: '#40484b' }}>
-                      Monthly Rent: <strong>${selectedTenantData.rentAmount?.toLocaleString() || '0'}</strong>
-                    </p>
-                  </div>
-                  <button
-                    onClick={downloadCSV}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors"
-                    style={{
-                      backgroundColor: '#003441',
-                      color: '#fff',
-                    }}
-                    onMouseEnter={(e) => (e.target.style.opacity = '0.9')}
-                    onMouseLeave={(e) => (e.target.style.opacity = '1')}
-                  >
-                    <Download size={16} />
-                    Export CSV
-                  </button>
+              {/* Tenant Info Bar */}
+              <Card variant="elevated" className="p-5 bg-secondary/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-bold tracking-tight text-foreground">
+                    {selectedTenantData.name || selectedTenantData.fullName}
+                  </h3>
+                  <p className="text-sm font-medium text-muted-foreground mt-0.5">
+                    {selectedProperty?.name || 'Unknown Property'}
+                    {selectedTenantData.unitNumber ? ` — Unit ${selectedTenantData.unitNumber}` : ''}
+                  </p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mt-1.5">
+                    Monthly Rent <span className="text-foreground ml-2">{formatCurrency(selectedTenantData.rentAmount)}</span>
+                  </p>
                 </div>
+                <button
+                  onClick={downloadCSV}
+                  className="flex items-center justify-center gap-2 px-5 py-2 bg-white border border-border rounded-lg text-sm font-bold hover:bg-secondary/50 transition-colors shadow-sm whitespace-nowrap"
+                >
+                  <Download size={15} /> Export CSV
+                </button>
               </Card>
 
-              {/* Filter */}
-              <div className="flex gap-2">
-                {['all', 'paid', 'pending'].map(status => (
+              {/* Status filter */}
+              <div className="flex gap-1.5 p-1 bg-secondary/50 rounded-lg w-fit">
+                {['all', 'pending', 'paid', 'overdue'].map(s => (
                   <button
-                    key={status}
-                    onClick={() => setFilterStatus(status)}
-                    className="px-4 py-2 rounded-lg transition-colors text-sm font-medium"
-                    style={{
-                      backgroundColor: filterStatus === status ? '#003441' : '#e6f6ff',
-                      color: filterStatus === status ? '#fff' : '#003441',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (filterStatus !== status) {
-                        e.target.style.backgroundColor = '#d5ecf8';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (filterStatus !== status) {
-                        e.target.style.backgroundColor = '#e6f6ff';
-                      }
-                    }}
+                    key={s}
+                    onClick={() => setFilterStatus(s)}
+                    className={`px-5 py-1.5 rounded-md transition-all text-[10px] font-bold uppercase tracking-widest ${
+                      filterStatus === s
+                        ? 'bg-white text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:bg-white/50'
+                    }`}
                   >
-                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                    {s}
+                    {s === 'pending' && pendingCount > 0 && (
+                      <span className="ml-1.5 px-1.5 py-0.5 bg-amber-500 text-white rounded-full text-[9px]">{pendingCount}</span>
+                    )}
                   </button>
                 ))}
               </div>
 
-              {/* Payment History Table */}
-              <Card variant="elevated" className="p-4 overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid #d5ecf8' }}>
-                      <th className="text-left py-3 px-2" style={{ color: '#40484b', fontWeight: '600' }}>Date</th>
-                      <th className="text-left py-3 px-2" style={{ color: '#40484b', fontWeight: '600' }}>Due Date</th>
-                      <th className="text-right py-3 px-2" style={{ color: '#40484b', fontWeight: '600' }}>Amount</th>
-                      <th className="text-left py-3 px-2" style={{ color: '#40484b', fontWeight: '600' }}>Status</th>
-                      <th className="text-left py-3 px-2" style={{ color: '#40484b', fontWeight: '600' }}>Method</th>
-                      <th className="text-left py-3 px-2" style={{ color: '#40484b', fontWeight: '600' }}>Reference</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredHistory.length > 0 ? (
-                      filteredHistory.map((payment, idx) => (
-                        <tr
-                          key={payment.id}
-                          style={{
-                            borderBottom: '1px solid #e6f6ff',
-                            backgroundColor: idx % 2 === 0 ? 'transparent' : '#f9fcfe',
-                          }}
-                        >
-                          <td className="py-3 px-2" style={{ color: '#071e27' }}>
-                            {payment.date.toLocaleDateString()}
-                          </td>
-                          <td className="py-3 px-2" style={{ color: '#40484b' }}>
-                            {payment.dueDate.toLocaleDateString()}
-                          </td>
-                          <td className="py-3 px-2 text-right font-semibold" style={{ color: '#071e27' }}>
-                            ${payment.amount.toLocaleString()}
-                          </td>
-                          <td className="py-3 px-2">
-                            <StatusBadge status={payment.status} />
-                          </td>
-                          <td className="py-3 px-2" style={{ color: '#40484b' }}>
-                            {payment.method || '—'}
-                          </td>
-                          <td className="py-3 px-2 font-mono text-xs" style={{ color: '#40484b' }}>
-                            {payment.reference || '—'}
+              {/* Payment Table */}
+              <Card variant="elevated" className="p-0 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-secondary/40 border-b border-border">
+                      <tr>
+                        <th className="py-4 px-5 text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Date</th>
+                        <th className="py-4 px-5 text-[10px] uppercase font-bold tracking-widest text-muted-foreground text-right">Amount</th>
+                        <th className="py-4 px-5 text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Status</th>
+                        <th className="py-4 px-5 text-[10px] uppercase font-bold tracking-widest text-muted-foreground hidden md:table-cell">Method / Ref</th>
+                        <th className="py-4 px-5 text-[10px] uppercase font-bold tracking-widest text-muted-foreground text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {filteredHistory.length > 0 ? (
+                        filteredHistory.map((payment, idx) => (
+                          <tr
+                            key={payment._id || idx}
+                            className={`transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-secondary/10'} hover:bg-secondary/30 ${payment.status === 'pending' ? 'ring-1 ring-inset ring-amber-200' : ''}`}
+                          >
+                            <td className="py-4 px-5">
+                              <p className="font-bold text-foreground">{payment.date.toLocaleDateString('en-KE')}</p>
+                              <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">
+                                Due: {payment.dueDate.toLocaleDateString('en-KE')}
+                              </p>
+                            </td>
+                            <td className="py-4 px-5 font-bold text-foreground text-right text-base">
+                              {formatCurrency(payment.amount)}
+                            </td>
+                            <td className="py-4 px-5">
+                              <StatusBadge status={payment.status} />
+                            </td>
+                            <td className="py-4 px-5 hidden md:table-cell">
+                              <p className="font-semibold text-xs text-foreground capitalize">{payment.method || '—'}</p>
+                              {payment.reference && (
+                                <p className="font-mono text-[10px] text-muted-foreground mt-0.5">{payment.reference}</p>
+                              )}
+                              {payment.notes && !payment.reference && (
+                                <p className="text-[10px] text-muted-foreground mt-0.5 italic truncate max-w-[160px]">{payment.notes}</p>
+                              )}
+                            </td>
+                            <td className="py-4 px-5 text-center">
+                              {payment.status === 'pending' ? (
+                                <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    onClick={() => handleConfirm(payment)}
+                                    disabled={!!confirmingId}
+                                    title="Confirm — mark as Paid"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-md text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+                                  >
+                                    {confirmingId === payment._id + '_confirm' ? (
+                                      <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                      <CheckCircle size={12} />
+                                    )}
+                                    Confirm
+                                  </button>
+                                  <button
+                                    onClick={() => handleReject(payment)}
+                                    disabled={!!confirmingId}
+                                    title="Reject — mark as Overdue"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-destructive text-destructive rounded-md text-[10px] font-bold uppercase tracking-widest hover:bg-destructive/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+                                  >
+                                    {confirmingId === payment._id + '_reject' ? (
+                                      <span className="w-3 h-3 border-2 border-destructive border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                      <XCircle size={12} />
+                                    )}
+                                    Reject
+                                  </button>
+                                </div>
+                              ) : payment.status === 'paid' ? (
+                                <span className="flex items-center justify-center gap-1 text-emerald-600 text-[10px] font-bold uppercase tracking-widest">
+                                  <CheckCircle size={13} /> Confirmed
+                                </span>
+                              ) : payment.status === 'overdue' ? (
+                                <span className="flex items-center justify-center gap-1 text-destructive text-[10px] font-bold uppercase tracking-widest">
+                                  <AlertCircle size={13} /> Overdue
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground text-[10px]">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan="5" className="py-16 text-center text-sm font-semibold text-muted-foreground bg-white">
+                            {tenantPayments.length === 0
+                              ? 'No payment records found for this tenant'
+                              : 'No records match the selected filter'}
                           </td>
                         </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan="6" className="py-8 text-center" style={{ color: '#40484b' }}>
-                          No payment history found
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </Card>
+
+              {/* Pending payments notice */}
+              {pendingCount > 0 && filterStatus !== 'pending' && (
+                <div
+                  onClick={() => setFilterStatus('pending')}
+                  className="flex items-center gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200 cursor-pointer hover:bg-amber-100 transition-colors"
+                >
+                  <Clock size={16} className="text-amber-600 shrink-0" />
+                  <p className="text-sm font-semibold text-amber-800">
+                    {pendingCount} payment{pendingCount !== 1 ? 's' : ''} pending your confirmation —{' '}
+                    <span className="underline underline-offset-2">click to filter</span>
+                  </p>
+                </div>
+              )}
             </>
           ) : (
-            <Card variant="subtle" className="p-12 text-center">
-              <CreditCard size={48} className="mx-auto mb-4" style={{ color: '#003441', opacity: 0.5 }} />
-              <p className="text-lg font-medium" style={{ color: '#071e27' }}>Select a tenant to view payment history</p>
-              <p style={{ color: '#40484b' }}>Choose a tenant from the list to see their payment transactions</p>
+            <Card variant="subtle" className="p-16 flex flex-col items-center justify-center text-center h-full min-h-[400px] border-dashed border-border bg-transparent">
+              <div className="w-16 h-16 rounded-full bg-secondary text-muted-foreground flex items-center justify-center mb-6">
+                <CreditCard size={32} />
+              </div>
+              <p className="text-xl font-bold tracking-tight text-foreground mb-2">Select a tenant</p>
+              <p className="text-sm font-medium text-muted-foreground max-w-sm">
+                Choose a tenant from the directory to view their payment submissions and confirm or reject them.
+              </p>
             </Card>
           )}
         </div>

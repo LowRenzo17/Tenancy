@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import bcryptjs from 'bcryptjs';
 
 const userSchema = new mongoose.Schema(
@@ -25,6 +26,10 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ['owner', 'tenant'],
       required: true,
+    },
+    requiresPasswordChange: {
+      type: Boolean,
+      default: false,
     },
     phone: {
       type: String,
@@ -114,12 +119,21 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcryptjs.compare(enteredPassword, this.password);
 };
 
-// Method to generate reset token
+// Method to generate a cryptographically secure reset token
 userSchema.methods.getResetPasswordToken = function () {
-  const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  // Use crypto.randomBytes — Math.random() is not cryptographically secure
+  const resetToken = crypto.randomBytes(32).toString('hex');
   this.resetPasswordToken = resetToken;
-  this.resetPasswordExpires = Date.now() + 60 * 60 * 1000; // 1 hour
+  this.resetPasswordExpires = Date.now() + 60 * 60 * 1000; // 1 hour expiry
   return resetToken;
+};
+
+// Helper: trim loginHistory to the most recent N entries
+// Prevents the User document exceeding MongoDB's 16MB BSON limit
+userSchema.methods.trimLoginHistory = function (maxEntries = 100) {
+  if (this.loginHistory.length > maxEntries) {
+    this.loginHistory = this.loginHistory.slice(-maxEntries);
+  }
 };
 
 const User = mongoose.model('User', userSchema);

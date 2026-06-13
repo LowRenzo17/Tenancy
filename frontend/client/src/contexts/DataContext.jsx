@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import apiClient from '../lib/api';
 import { useAuth } from './AuthContext';
+import { useSocket } from './SocketContext';
 
 const DataContext = createContext();
 
 export const DataProvider = ({ children }) => {
   const { isAuthenticated, user } = useAuth();
+  const { socket } = useSocket();
 
   // Properties
   const [properties, setProperties] = useState([]);
@@ -16,6 +18,10 @@ export const DataProvider = ({ children }) => {
   const [tenants, setTenants] = useState([]);
   const [tenantsLoading, setTenantsLoading] = useState(false);
   const [tenantsError, setTenantsError] = useState(null);
+
+  const [myTenantProfile, setMyTenantProfile] = useState(null);
+  const [myTenantProfileLoading, setMyTenantProfileLoading] = useState(false);
+  const [myTenantProfileError, setMyTenantProfileError] = useState(null);
 
   // Maintenance
   const [maintenance, setMaintenance] = useState([]);
@@ -41,7 +47,13 @@ export const DataProvider = ({ children }) => {
       setPropertiesError(null);
       const response = await apiClient.getProperties();
       if (response.success) {
-        setProperties(response.properties || []);
+        const rawList = response.properties || [];
+        const normalized = rawList.map(p => ({
+          ...p,
+          id: p._id || p.id,
+          status: p.occupancyStatus || p.status || 'vacant'
+        }));
+        setProperties(normalized);
       }
     } catch (err) {
       setPropertiesError(err.message);
@@ -60,13 +72,39 @@ export const DataProvider = ({ children }) => {
       setTenantsError(null);
       const response = await apiClient.getTenants();
       if (response.success) {
-        setTenants(response.tenants || []);
+        const rawList = response.tenants || [];
+        const normalized = rawList.map(t => ({
+          ...t,
+          id: t._id || t.id,
+          name: t.fullName || t.name,
+          rentAmount: t.monthlyRent || t.rentAmount || 0,
+        }));
+        setTenants(normalized);
       }
     } catch (err) {
       setTenantsError(err.message);
       console.error('Error fetching tenants:', err);
     } finally {
       setTenantsLoading(false);
+    }
+  };
+
+  // Fetch my tenant profile
+  const fetchMyTenantProfile = async () => {
+    if (!isAuthenticated || user?.accountType !== 'tenant') return;
+
+    try {
+      setMyTenantProfileLoading(true);
+      setMyTenantProfileError(null);
+      const response = await apiClient.getMyTenantProfile();
+      if (response.success) {
+        setMyTenantProfile(response.tenant);
+      }
+    } catch (err) {
+      setMyTenantProfileError(err.message);
+      console.error('Error fetching my tenant profile:', err);
+    } finally {
+      setMyTenantProfileLoading(false);
     }
   };
 
@@ -132,8 +170,14 @@ export const DataProvider = ({ children }) => {
     try {
       const response = await apiClient.createProperty(data);
       if (response.success) {
-        setProperties([...properties, response.property]);
-        return response.property;
+        const p = response.property;
+        const normalized = {
+          ...p,
+          id: p._id || p.id,
+          status: p.occupancyStatus || p.status || 'vacant'
+        };
+        setProperties([...properties, normalized]);
+        return normalized;
       }
     } catch (err) {
       console.error('Error creating property:', err);
@@ -146,8 +190,14 @@ export const DataProvider = ({ children }) => {
     try {
       const response = await apiClient.updateProperty(id, data);
       if (response.success) {
-        setProperties(properties.map((p) => (p._id === id ? response.property : p)));
-        return response.property;
+        const p = response.property;
+        const normalized = {
+          ...p,
+          id: p._id || p.id,
+          status: p.occupancyStatus || p.status || 'vacant'
+        };
+        setProperties(properties.map((prop) => (prop.id === id || prop._id === id ? normalized : prop)));
+        return normalized;
       }
     } catch (err) {
       console.error('Error updating property:', err);
@@ -174,8 +224,21 @@ export const DataProvider = ({ children }) => {
     try {
       const response = await apiClient.createTenant(data);
       if (response.success) {
-        setTenants([...tenants, response.tenant]);
-        return response.tenant;
+        const t = response.tenant;
+        const normalized = {
+          ...t,
+          id: t._id || t.id,
+          name: t.fullName || t.name,
+          rentAmount: t.monthlyRent || t.rentAmount || 0,
+        };
+        setTenants([...tenants, normalized]);
+        
+        // Emit socket event for real-time updates
+        if (socket) {
+          socket.emit('tenant-created', normalized);
+        }
+        
+        return normalized;
       }
     } catch (err) {
       console.error('Error creating tenant:', err);
@@ -188,8 +251,21 @@ export const DataProvider = ({ children }) => {
     try {
       const response = await apiClient.updateTenant(id, data);
       if (response.success) {
-        setTenants(tenants.map((t) => (t._id === id ? response.tenant : t)));
-        return response.tenant;
+        const t = response.tenant;
+        const normalized = {
+          ...t,
+          id: t._id || t.id,
+          name: t.fullName || t.name,
+          rentAmount: t.monthlyRent || t.rentAmount || 0,
+        };
+        setTenants(tenants.map((ten) => (ten.id === id || ten._id === id ? normalized : ten)));
+        
+        // Emit socket event for real-time updates
+        if (socket) {
+          socket.emit('tenant-updated', normalized);
+        }
+        
+        return normalized;
       }
     } catch (err) {
       console.error('Error updating tenant:', err);
@@ -202,7 +278,14 @@ export const DataProvider = ({ children }) => {
     try {
       const response = await apiClient.deleteTenant(id);
       if (response.success) {
+        const tenantToDelete = tenants.find(t => t._id === id || t.id === id);
         setTenants(tenants.filter((t) => t._id !== id));
+        
+        // Emit socket event for real-time updates
+        if (socket && tenantToDelete) {
+          socket.emit('tenant-deleted', tenantToDelete);
+        }
+        
         return response;
       }
     } catch (err) {
@@ -230,8 +313,13 @@ export const DataProvider = ({ children }) => {
     try {
       const response = await apiClient.updateMaintenanceRequest(id, data);
       if (response.success) {
-        setMaintenance(maintenance.map((m) => (m._id === id ? response.maintenance : m)));
-        return response.maintenance;
+        if (response.deleted) {
+          setMaintenance(maintenance.filter((m) => m._id !== id && m.id !== id));
+          return null;
+        } else {
+          setMaintenance(maintenance.map((m) => (m._id === id ? response.maintenance : m)));
+          return response.maintenance;
+        }
       }
     } catch (err) {
       console.error('Error updating maintenance request:', err);
@@ -263,6 +351,20 @@ export const DataProvider = ({ children }) => {
       }
     } catch (err) {
       console.error('Error creating payment:', err);
+      throw err;
+    }
+  };
+
+  // Submit tenant payment
+  const submitPayment = async (data) => {
+    try {
+      const response = await apiClient.submitTenantPayment(data);
+      if (response.success) {
+        await fetchMyTenantProfile();
+        return response.payment;
+      }
+    } catch (err) {
+      console.error('Error submitting payment:', err);
       throw err;
     }
   };
@@ -302,11 +404,167 @@ export const DataProvider = ({ children }) => {
         fetchProperties();
         fetchTenants();
         fetchAnalytics();
+      } else if (user?.accountType === 'tenant') {
+        fetchMyTenantProfile();
       }
       fetchMaintenance();
       fetchPayments();
     }
   }, [isAuthenticated, user]);
+
+  // Socket.io listeners for real-time data updates
+  useEffect(() => {
+    if (!socket || !isAuthenticated) return;
+
+    // Property events
+    const handlePropertyCreated = (data) => {
+      if (user?.accountType === 'owner') {
+        const normalized = {
+          ...data,
+          id: data._id || data.id,
+          status: data.occupancyStatus || data.status || 'vacant'
+        };
+        setProperties(prev => [...prev, normalized]);
+      }
+    };
+
+    const handlePropertyUpdated = (data) => {
+      if (user?.accountType === 'owner') {
+        const normalized = {
+          ...data,
+          id: data._id || data.id,
+          status: data.occupancyStatus || data.status || 'vacant'
+        };
+        setProperties(prev => 
+          prev.map(p => (p._id === data._id || p.id === data._id) ? normalized : p)
+        );
+      }
+    };
+
+    const handlePropertyDeleted = (data) => {
+      if (user?.accountType === 'owner') {
+        setProperties(prev => prev.filter(p => p._id !== data.propertyId));
+      }
+    };
+
+    // Tenant events
+    const handleTenantCreated = (data) => {
+      if (user?.accountType === 'owner') {
+        const normalized = {
+          ...data,
+          id: data._id || data.id,
+          name: data.fullName || data.name,
+          rentAmount: data.monthlyRent || data.rentAmount || 0,
+        };
+        setTenants(prev => [...prev, normalized]);
+      }
+    };
+
+    const handleTenantUpdated = (data) => {
+      if (user?.accountType === 'owner') {
+        const normalized = {
+          ...data,
+          id: data._id || data.id,
+          name: data.fullName || data.name,
+          rentAmount: data.monthlyRent || data.rentAmount || 0,
+        };
+        setTenants(prev =>
+          prev.map(t => (t._id === data._id || t.id === data._id) ? normalized : t)
+        );
+      }
+    };
+
+    const handleTenantDeleted = (data) => {
+      if (user?.accountType === 'owner') {
+        setTenants(prev => prev.filter(t => t._id !== data.tenantId));
+      }
+    };
+
+    const handleTenantProfileUpdated = (data) => {
+      if (user?.accountType === 'tenant') {
+        setMyTenantProfile(data);
+      }
+    };
+
+    // Maintenance events
+    const handleMaintenanceCreated = (data) => {
+      setMaintenance(prev => [...prev, data]);
+    };
+
+    const handleMaintenanceUpdated = (data) => {
+      setMaintenance(prev =>
+        prev.map(m => (m._id === data._id) ? data : m)
+      );
+    };
+
+    const handleMaintenanceDeleted = (data) => {
+      setMaintenance(prev => prev.filter(m => m._id !== data.maintenanceId));
+    };
+
+    // Payment events
+    const handlePaymentCreated = (data) => {
+      setPayments(prev => [...prev, data]);
+    };
+
+    const handlePaymentUpdated = (data) => {
+      setPayments(prev =>
+        prev.map(p => (p._id === data._id) ? data : p)
+      );
+      // Also update tenant profile if it's the current user
+      if (user?.accountType === 'tenant') {
+        fetchMyTenantProfile();
+      }
+    };
+
+    const handlePaymentDeleted = (data) => {
+      setPayments(prev => prev.filter(p => p._id !== data.paymentId));
+      // Also update tenant profile if it's the current user
+      if (user?.accountType === 'tenant') {
+        fetchMyTenantProfile();
+      }
+    };
+
+    // Analytics events
+    const handleAnalyticsUpdated = (data) => {
+      if (user?.accountType === 'owner') {
+        setAnalytics(data);
+      }
+    };
+
+    // Register all listeners
+    socket.on('property-created', handlePropertyCreated);
+    socket.on('property-updated', handlePropertyUpdated);
+    socket.on('property-deleted', handlePropertyDeleted);
+    socket.on('tenant-created', handleTenantCreated);
+    socket.on('tenant-updated', handleTenantUpdated);
+    socket.on('tenant-deleted', handleTenantDeleted);
+    socket.on('tenant-profile-updated', handleTenantProfileUpdated);
+    socket.on('maintenance-created', handleMaintenanceCreated);
+    socket.on('maintenance-updated', handleMaintenanceUpdated);
+    socket.on('maintenance-deleted', handleMaintenanceDeleted);
+    socket.on('payment-created', handlePaymentCreated);
+    socket.on('payment-updated', handlePaymentUpdated);
+    socket.on('payment-deleted', handlePaymentDeleted);
+    socket.on('analytics-updated', handleAnalyticsUpdated);
+
+    // Cleanup
+    return () => {
+      socket.off('property-created', handlePropertyCreated);
+      socket.off('property-updated', handlePropertyUpdated);
+      socket.off('property-deleted', handlePropertyDeleted);
+      socket.off('tenant-created', handleTenantCreated);
+      socket.off('tenant-updated', handleTenantUpdated);
+      socket.off('tenant-deleted', handleTenantDeleted);
+      socket.off('tenant-profile-updated', handleTenantProfileUpdated);
+      socket.off('maintenance-created', handleMaintenanceCreated);
+      socket.off('maintenance-updated', handleMaintenanceUpdated);
+      socket.off('maintenance-deleted', handleMaintenanceDeleted);
+      socket.off('payment-created', handlePaymentCreated);
+      socket.off('payment-updated', handlePaymentUpdated);
+      socket.off('payment-deleted', handlePaymentDeleted);
+      socket.off('analytics-updated', handleAnalyticsUpdated);
+    };
+  }, [socket, isAuthenticated, user?.accountType]);
 
   const value = {
     // Properties
@@ -326,6 +584,10 @@ export const DataProvider = ({ children }) => {
     createTenant,
     updateTenant,
     deleteTenant,
+    myTenantProfile,
+    myTenantProfileLoading,
+    myTenantProfileError,
+    fetchMyTenantProfile,
 
     // Maintenance
     maintenance,
@@ -342,6 +604,7 @@ export const DataProvider = ({ children }) => {
     paymentsError,
     fetchPayments,
     createPayment,
+    submitPayment,
     updatePayment,
     deletePayment,
 

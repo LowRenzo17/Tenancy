@@ -1,589 +1,173 @@
-import { useState } from 'react';
-import { Send, MessageSquare, Bell, Users, Plus, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { Bell, X } from 'lucide-react';
+import Chat from './Chat';
 import Card from '../components/Card';
+import apiClient from '../lib/api';
+import { useChat } from '../contexts/ChatContext';
+import { toast } from 'sonner';
 
 /**
- * Tenant Communication Portal
- * Design System: The Architectural Ledger
- * - Messaging system for property managers and tenants
- * - Notification management and broadcast messages
+ * Tenant Communication Portal (Live)
+ * Wraps the full robust Chat component while retaining the ability 
+ * to broadcast messages individually to all linked tenants.
  */
-export default function Communication({ tenants, properties }) {
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      from: 'Manager',
-      to: 'Sarah Johnson',
-      subject: 'Rent Payment Reminder',
-      message: 'This is a friendly reminder that rent is due on the 1st of the month. Please ensure payment is made on time.',
-      date: new Date(2026, 2, 20),
-      type: 'reminder',
-      read: true,
-    },
-    {
-      id: 2,
-      from: 'Sarah Johnson',
-      to: 'Manager',
-      subject: 'Maintenance Request - Leaky Faucet',
-      message: 'The kitchen faucet has been leaking for the past few days. Could you please arrange for a repair?',
-      date: new Date(2026, 2, 19),
-      type: 'maintenance',
-      read: true,
-    },
-  ]);
-
-  const [selectedConversation, setSelectedConversation] = useState(null);
-  const [showCompose, setShowCompose] = useState(false);
-  const [composeData, setComposeData] = useState({
-    to: '',
-    subject: '',
-    message: '',
-    type: 'general',
-  });
-
+export default function Communication({ tenants }) {
   const [showBroadcast, setShowBroadcast] = useState(false);
-  const [broadcastData, setBroadcastData] = useState({
-    subject: '',
-    message: '',
-    recipients: 'all',
-  });
+  const [broadcastData, setBroadcastData] = useState({ subject: '', message: '', recipients: 'all' });
+  const [isSending, setIsSending] = useState(false);
+  const { fetchConversations } = useChat();
 
-  const handleSendMessage = () => {
-    if (!composeData.to || !composeData.subject || !composeData.message) {
-      alert('Please fill in all fields');
-      return;
-    }
-
-    const newMessage = {
-      id: Math.max(...messages.map(m => m.id), 0) + 1,
-      from: 'Manager',
-      to: composeData.to,
-      subject: composeData.subject,
-      message: composeData.message,
-      date: new Date(),
-      type: composeData.type,
-      read: false,
-    };
-
-    setMessages([newMessage, ...messages]);
-    setComposeData({
-      to: '',
-      subject: '',
-      message: '',
-      type: 'general',
-    });
-    setShowCompose(false);
-  };
-
-  const handleSendBroadcast = () => {
+  const handleSendBroadcast = async () => {
     if (!broadcastData.subject || !broadcastData.message) {
-      alert('Please fill in subject and message');
+      toast.error('Please fill in both the subject and the message content.');
       return;
     }
 
-    const recipientList = broadcastData.recipients === 'all'
-      ? tenants.map(t => t.name)
-      : [broadcastData.recipients];
+    try {
+      setIsSending(true);
+      // Filter the tenants based on selection
+      const recipientList = broadcastData.recipients === 'all'
+        ? tenants
+        : tenants.filter(t => t.id === broadcastData.recipients || t._id === broadcastData.recipients);
 
-    recipientList.forEach(recipient => {
-      const newMessage = {
-        id: Math.max(...messages.map(m => m.id), 0) + 1,
-        from: 'Manager',
-        to: recipient,
-        subject: broadcastData.subject,
-        message: broadcastData.message,
-        date: new Date(),
-        type: 'broadcast',
-        read: false,
-      };
-      setMessages(prev => [newMessage, ...prev]);
-    });
+      let sentCount = 0;
+      for (const tenant of recipientList) {
+        // Broadcasts can only be sent to tenants who have successfully linked a platform user account.
+        if (!tenant.userId) continue; 
 
-    setBroadcastData({
-      subject: '',
-      message: '',
-      recipients: 'all',
-    });
-    setShowBroadcast(false);
-  };
+        // 1. Create or get conversation with this tenant
+        const convRes = await apiClient.post('/chat/conversations', {
+          participantIds: [tenant.userId],
+          subject: broadcastData.subject
+        });
 
-  const handleMarkAsRead = (messageId) => {
-    setMessages(messages.map(m =>
-      m.id === messageId ? { ...m, read: true } : m
-    ));
-  };
+        if (convRes.success) {
+          const conversationId = convRes.conversation._id;
+          
+          // 2. Send the actual message
+          await apiClient.post('/chat/messages', {
+            conversationId,
+            receiverId: tenant.userId,
+            content: broadcastData.message
+          });
+          sentCount++;
+        }
+      }
 
-  const handleDeleteMessage = (messageId) => {
-    setMessages(messages.filter(m => m.id !== messageId));
-  };
-
-  // Group messages by conversation
-  const conversations = {};
-  messages.forEach(msg => {
-    const participant = msg.from === 'Manager' ? msg.to : msg.from;
-    if (!conversations[participant]) {
-      conversations[participant] = [];
-    }
-    conversations[participant].push(msg);
-  });
-
-  const selectedMessages = selectedConversation
-    ? conversations[selectedConversation] || []
-    : [];
-
-  const unreadCount = messages.filter(m => !m.read).length;
-
-  const getMessageTypeColor = (type) => {
-    switch (type) {
-      case 'reminder':
-        return { bg: 'rgba(146, 64, 14, 0.1)', text: '#92400e' };
-      case 'maintenance':
-        return { bg: 'rgba(0, 52, 65, 0.1)', text: '#003441' };
-      case 'broadcast':
-        return { bg: 'rgba(22, 101, 52, 0.1)', text: '#166534' };
-      default:
-        return { bg: 'rgba(0, 52, 65, 0.1)', text: '#003441' };
+      toast.success(`Broadcast delivered to ${sentCount} tenant${sentCount !== 1 ? 's' : ''}`);
+      setShowBroadcast(false);
+      setBroadcastData({ subject: '', message: '', recipients: 'all' });
+      
+      // Refresh conversation list to show the new messages in the sidebar
+      if (sentCount > 0) {
+        fetchConversations();
+      }
+    } catch (err) {
+      console.error('Error during broadcast:', err);
+      toast.error('Failed to send broadcast. Check your connection and try again.');
+    } finally {
+      setIsSending(false);
     }
   };
 
   return (
-    <div className="space-y-8">
-      {/* Page Header */}
-      <div className="flex justify-between items-start">
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 7rem)' }}>
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border pb-6 mb-6">
         <div>
-          <h1 className="text-4xl font-bold mb-2" style={{ fontFamily: 'Manrope', color: '#071e27' }}>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground mb-1">
             Tenant Communication
           </h1>
-          <p style={{ color: '#40484b' }}>Send messages, reminders, and announcements to tenants</p>
+          <p className="text-sm text-muted-foreground">Message tenants individually or broadcast announcements safely.</p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowCompose(!showCompose)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors"
-            style={{
-              backgroundColor: '#003441',
-              color: '#fff',
-            }}
-            onMouseEnter={(e) => (e.target.style.opacity = '0.9')}
-            onMouseLeave={(e) => (e.target.style.opacity = '1')}
-          >
-            <MessageSquare size={18} />
-            New Message
-          </button>
-          <button
-            onClick={() => setShowBroadcast(!showBroadcast)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors"
-            style={{
-              backgroundColor: '#166534',
-              color: '#fff',
-            }}
-            onMouseEnter={(e) => (e.target.style.opacity = '0.9')}
-            onMouseLeave={(e) => (e.target.style.opacity = '1')}
-          >
-            <Bell size={18} />
-            Broadcast
-          </button>
-        </div>
+        <button
+          onClick={() => setShowBroadcast(true)}
+          className="flex items-center justify-center gap-2 px-6 py-2 bg-[#003441] text-white font-bold rounded-lg shadow-sm hover:opacity-90 transition-colors"
+        >
+          <Bell size={16} />
+          Broadcast Announcement
+        </button>
       </div>
 
-      {/* Compose Message Form */}
-      {showCompose && (
-        <Card variant="elevated" className="p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold" style={{ fontFamily: 'Manrope', color: '#071e27' }}>
-              Compose New Message
-            </h3>
-            <button
-              onClick={() => setShowCompose(false)}
-              className="p-1 hover:bg-gray-100 rounded"
-            >
-              <X size={20} style={{ color: '#40484b' }} />
-            </button>
-          </div>
+      {/* The main live Chat UI — tenants prop enables the owner tenant-picker */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <Chat tenants={tenants} />
+      </div>
 
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {showBroadcast && (
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+          <Card variant="elevated" className="p-6 max-w-lg w-full bg-white shadow-xl border border-border animate-in slide-in-from-bottom-4 duration-300">
+            <div className="flex justify-between items-center mb-6 border-b border-border pb-4">
+              <h3 className="text-xl font-bold tracking-tight text-foreground">Send Broadcast Message</h3>
+              <button disabled={isSending} onClick={() => setShowBroadcast(false)} className="p-1.5 hover:bg-secondary text-muted-foreground hover:text-foreground rounded-md transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: '#40484b' }}>
-                  To
-                </label>
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-[#003441]/70 mb-2">Recipients</label>
                 <select
-                  value={composeData.to}
-                  onChange={(e) => setComposeData({ ...composeData, to: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg"
-                  style={{
-                    backgroundColor: '#f3faff',
-                    border: '1px solid #d5ecf8',
-                    color: '#071e27',
-                  }}
+                  disabled={isSending}
+                  value={broadcastData.recipients}
+                  onChange={e => setBroadcastData({...broadcastData, recipients: e.target.value})}
+                  className="w-full px-3 py-2 bg-secondary border border-border rounded-lg focus:ring-2 focus:ring-[#003441]/20 focus:border-[#003441] outline-none transition-all text-foreground font-medium"
                 >
-                  <option value="">Select a tenant...</option>
-                  {tenants.map(tenant => (
-                    <option key={tenant.id} value={tenant.name}>
-                      {tenant.name}
-                    </option>
+                  <option value="all">All Linked Tenants ({tenants.filter(t => t.userId).length})</option>
+                  {tenants.filter(t => t.userId).map(t => (
+                    <option key={t.id || t._id} value={t.id || t._id}>{t.name}</option>
                   ))}
                 </select>
+                {tenants.filter(t => !t.userId).length > 0 && (
+                  <p className="text-xs mt-2 text-[#ba1a1a] font-medium bg-[#ba1a1a]/5 p-2 rounded">
+                    * {tenants.filter(t => !t.userId).length} tenant(s) are ignored because they have not created an account.
+                  </p>
+                )}
+              </div>
+              
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-[#003441]/70 mb-2">Subject Summary</label>
+                <input
+                  disabled={isSending}
+                  type="text"
+                  placeholder="e.g. Water Maintenance"
+                  value={broadcastData.subject}
+                  onChange={e => setBroadcastData({...broadcastData, subject: e.target.value})}
+                  className="w-full px-3 py-2 bg-secondary border border-border rounded-lg focus:ring-2 focus:ring-[#003441]/20 focus:border-[#003441] outline-none transition-all text-foreground font-medium"
+                />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: '#40484b' }}>
-                  Message Type
-                </label>
-                <select
-                  value={composeData.type}
-                  onChange={(e) => setComposeData({ ...composeData, type: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg"
-                  style={{
-                    backgroundColor: '#f3faff',
-                    border: '1px solid #d5ecf8',
-                    color: '#071e27',
-                  }}
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-[#003441]/70 mb-2">Message content</label>
+                <textarea
+                  disabled={isSending}
+                  rows={5}
+                  placeholder="Hello, please be advised that..."
+                  value={broadcastData.message}
+                  onChange={e => setBroadcastData({...broadcastData, message: e.target.value})}
+                  className="w-full px-3 py-2 bg-secondary border border-border rounded-lg focus:ring-2 focus:ring-[#003441]/20 focus:border-[#003441] outline-none transition-all text-foreground font-medium resize-y max-h-64"
+                />
+              </div>
+
+              <div className="flex gap-4 justify-end mt-8 pt-6 border-t border-border">
+                <button
+                  disabled={isSending}
+                  onClick={() => setShowBroadcast(false)}
+                  className="px-6 py-2.5 font-bold uppercase tracking-widest text-xs transition-colors rounded-lg hover:bg-secondary text-foreground"
                 >
-                  <option value="general">General</option>
-                  <option value="reminder">Reminder</option>
-                  <option value="maintenance">Maintenance</option>
-                </select>
+                  Cancel
+                </button>
+                <button
+                  disabled={isSending}
+                  onClick={handleSendBroadcast}
+                  className={`px-6 py-2.5 rounded-lg font-bold uppercase tracking-widest text-xs text-white transition-all shadow-sm ${isSending ? 'bg-slate-400 cursor-not-allowed' : 'bg-[#003441] hover:opacity-90'}`}
+                >
+                  {isSending ? 'Sending Broadcast...' : 'Send Broadcast'} 
+                </button>
               </div>
             </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#40484b' }}>
-                Subject
-              </label>
-              <input
-                type="text"
-                placeholder="e.g., Rent Payment Reminder"
-                value={composeData.subject}
-                onChange={(e) => setComposeData({ ...composeData, subject: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg"
-                style={{
-                  backgroundColor: '#f3faff',
-                  border: '1px solid #d5ecf8',
-                  color: '#071e27',
-                }}
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#40484b' }}>
-                Message
-              </label>
-              <textarea
-                placeholder="Type your message here..."
-                value={composeData.message}
-                onChange={(e) => setComposeData({ ...composeData, message: e.target.value })}
-                rows="6"
-                className="w-full px-3 py-2 rounded-lg"
-                style={{
-                  backgroundColor: '#f3faff',
-                  border: '1px solid #d5ecf8',
-                  color: '#071e27',
-                  fontFamily: 'inherit',
-                }}
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={handleSendMessage}
-                className="flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors"
-                style={{
-                  backgroundColor: '#003441',
-                  color: '#fff',
-                }}
-                onMouseEnter={(e) => (e.target.style.opacity = '0.9')}
-                onMouseLeave={(e) => (e.target.style.opacity = '1')}
-              >
-                <Send size={16} />
-                Send Message
-              </button>
-              <button
-                onClick={() => setShowCompose(false)}
-                className="px-6 py-2 rounded-lg font-medium transition-colors"
-                style={{
-                  backgroundColor: '#e6f6ff',
-                  color: '#003441',
-                }}
-                onMouseEnter={(e) => (e.target.style.backgroundColor = '#d5ecf8')}
-                onMouseLeave={(e) => (e.target.style.backgroundColor = '#e6f6ff')}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* Broadcast Message Form */}
-      {showBroadcast && (
-        <Card variant="elevated" className="p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold" style={{ fontFamily: 'Manrope', color: '#071e27' }}>
-              Send Broadcast Message
-            </h3>
-            <button
-              onClick={() => setShowBroadcast(false)}
-              className="p-1 hover:bg-gray-100 rounded"
-            >
-              <X size={20} style={{ color: '#40484b' }} />
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#40484b' }}>
-                Recipients
-              </label>
-              <select
-                value={broadcastData.recipients}
-                onChange={(e) => setBroadcastData({ ...broadcastData, recipients: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg"
-                style={{
-                  backgroundColor: '#f3faff',
-                  border: '1px solid #d5ecf8',
-                  color: '#071e27',
-                }}
-              >
-                <option value="all">All Tenants ({tenants.length})</option>
-                {tenants.map(tenant => (
-                  <option key={tenant.id} value={tenant.name}>
-                    {tenant.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#40484b' }}>
-                Subject
-              </label>
-              <input
-                type="text"
-                placeholder="e.g., Important Community Announcement"
-                value={broadcastData.subject}
-                onChange={(e) => setBroadcastData({ ...broadcastData, subject: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg"
-                style={{
-                  backgroundColor: '#f3faff',
-                  border: '1px solid #d5ecf8',
-                  color: '#071e27',
-                }}
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#40484b' }}>
-                Message
-              </label>
-              <textarea
-                placeholder="Type your broadcast message here..."
-                value={broadcastData.message}
-                onChange={(e) => setBroadcastData({ ...broadcastData, message: e.target.value })}
-                rows="6"
-                className="w-full px-3 py-2 rounded-lg"
-                style={{
-                  backgroundColor: '#f3faff',
-                  border: '1px solid #d5ecf8',
-                  color: '#071e27',
-                  fontFamily: 'inherit',
-                }}
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={handleSendBroadcast}
-                className="flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors"
-                style={{
-                  backgroundColor: '#166534',
-                  color: '#fff',
-                }}
-                onMouseEnter={(e) => (e.target.style.opacity = '0.9')}
-                onMouseLeave={(e) => (e.target.style.opacity = '1')}
-              >
-                <Bell size={16} />
-                Send to All
-              </button>
-              <button
-                onClick={() => setShowBroadcast(false)}
-                className="px-6 py-2 rounded-lg font-medium transition-colors"
-                style={{
-                  backgroundColor: '#e6f6ff',
-                  color: '#003441',
-                }}
-                onMouseEnter={(e) => (e.target.style.backgroundColor = '#d5ecf8')}
-                onMouseLeave={(e) => (e.target.style.backgroundColor = '#e6f6ff')}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* Main Communication Area */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Conversations List */}
-        <Card variant="elevated" className="p-4">
-          <h3 className="text-lg font-semibold mb-4" style={{ fontFamily: 'Manrope', color: '#071e27' }}>
-            Conversations
-          </h3>
-          <div className="space-y-2 max-h-96 overflow-y-auto">
-            {Object.entries(conversations).length > 0 ? (
-              Object.entries(conversations).map(([participant, msgs]) => {
-                const unread = msgs.filter(m => !m.read).length;
-                return (
-                  <button
-                    key={participant}
-                    onClick={() => {
-                      setSelectedConversation(participant);
-                      msgs.forEach(m => handleMarkAsRead(m.id));
-                    }}
-                    className="w-full text-left p-3 rounded-lg transition-all"
-                    style={{
-                      backgroundColor: selectedConversation === participant ? '#e6f6ff' : 'transparent',
-                      borderLeft: selectedConversation === participant ? '3px solid #003441' : '3px solid transparent',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (selectedConversation !== participant) {
-                        e.target.style.backgroundColor = '#f3faff';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (selectedConversation !== participant) {
-                        e.target.style.backgroundColor = 'transparent';
-                      }
-                    }}
-                  >
-                    <div className="flex justify-between items-start">
-                      <p className="font-semibold text-sm" style={{ color: '#071e27' }}>
-                        {participant}
-                      </p>
-                      {unread > 0 && (
-                        <span
-                          className="px-2 py-1 rounded text-xs font-bold"
-                          style={{
-                            backgroundColor: '#ba1a1a',
-                            color: '#fff',
-                          }}
-                        >
-                          {unread}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs mt-1" style={{ color: '#40484b' }}>
-                      {msgs[0]?.subject || 'No subject'}
-                    </p>
-                  </button>
-                );
-              })
-            ) : (
-              <p style={{ color: '#40484b' }}>No conversations yet</p>
-            )}
-          </div>
-        </Card>
-
-        {/* Message Thread */}
-        <div className="lg:col-span-2">
-          {selectedConversation ? (
-            <Card variant="elevated" className="p-6 h-full flex flex-col">
-              <h3 className="text-lg font-semibold mb-4" style={{ fontFamily: 'Manrope', color: '#071e27' }}>
-                {selectedConversation}
-              </h3>
-
-              <div className="flex-1 overflow-y-auto space-y-4 mb-4">
-                {selectedMessages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className="p-4 rounded-lg"
-                    style={{
-                      backgroundColor: msg.from === 'Manager' ? '#e6f6ff' : '#f3faff',
-                      borderLeft: `3px solid ${msg.from === 'Manager' ? '#003441' : '#d5ecf8'}`,
-                    }}
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <p className="font-semibold text-sm" style={{ color: '#071e27' }}>
-                          {msg.from}
-                        </p>
-                        <p className="text-xs" style={{ color: '#40484b' }}>
-                          {msg.date.toLocaleDateString()} {msg.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <span
-                          className="px-2 py-1 rounded text-xs font-medium"
-                          style={getMessageTypeColor(msg.type)}
-                        >
-                          {msg.type.charAt(0).toUpperCase() + msg.type.slice(1)}
-                        </span>
-                        <button
-                          onClick={() => handleDeleteMessage(msg.id)}
-                          className="text-xs px-2 py-1 rounded transition-colors"
-                          style={{
-                            color: '#ba1a1a',
-                            backgroundColor: 'rgba(186, 26, 26, 0.1)',
-                          }}
-                          onMouseEnter={(e) => (e.target.style.opacity = '0.8')}
-                          onMouseLeave={(e) => (e.target.style.opacity = '1')}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                    <p className="font-semibold text-sm mb-2" style={{ color: '#071e27' }}>
-                      {msg.subject}
-                    </p>
-                    <p style={{ color: '#40484b', lineHeight: '1.5' }}>
-                      {msg.message}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          ) : (
-            <Card variant="subtle" className="p-12 text-center">
-              <MessageSquare size={48} className="mx-auto mb-4" style={{ color: '#003441', opacity: 0.5 }} />
-              <p className="text-lg font-medium" style={{ color: '#071e27' }}>Select a conversation</p>
-              <p style={{ color: '#40484b' }}>Choose a tenant to view or continue the conversation</p>
-            </Card>
-          )}
+          </Card>
         </div>
-      </div>
-
-      {/* Communication Stats */}
-      <Card variant="subtle" className="p-6">
-        <h3 className="text-lg font-semibold mb-4" style={{ fontFamily: 'Manrope', color: '#071e27' }}>
-          Communication Overview
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <p className="text-sm" style={{ color: '#40484b' }}>Total Messages</p>
-            <p className="text-2xl font-bold" style={{ fontFamily: 'Manrope', color: '#071e27' }}>
-              {messages.length}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm" style={{ color: '#40484b' }}>Unread Messages</p>
-            <p className="text-2xl font-bold" style={{ fontFamily: 'Manrope', color: '#ba1a1a' }}>
-              {unreadCount}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm" style={{ color: '#40484b' }}>Active Conversations</p>
-            <p className="text-2xl font-bold" style={{ fontFamily: 'Manrope', color: '#003441' }}>
-              {Object.keys(conversations).length}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm" style={{ color: '#40484b' }}>Tenants Connected</p>
-            <p className="text-2xl font-bold" style={{ fontFamily: 'Manrope', color: '#166534' }}>
-              {tenants.length}
-            </p>
-          </div>
-        </div>
-      </Card>
+      )}
     </div>
   );
 }

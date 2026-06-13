@@ -1,4 +1,5 @@
 import { Server } from 'socket.io';
+import jwt from 'jsonwebtoken';
 import { initializeChatSocket } from './chatSocketHandler.js';
 
 /**
@@ -11,6 +12,34 @@ export const initializeSocket = (httpServer, chatHandler = null) => {
       methods: ['GET', 'POST'],
       credentials: true,
     },
+  });
+
+  // Socket authentication middleware
+  io.use((socket, next) => {
+    const authToken = socket.handshake.auth?.token || socket.handshake.headers?.authorization;
+    let token;
+
+    if (typeof authToken === 'string' && authToken.startsWith('Bearer ')) {
+      token = authToken.split(' ')[1];
+    } else if (typeof authToken === 'string') {
+      token = authToken;
+    }
+
+    if (!token) {
+      return next(new Error('Authentication error: token required'));
+    }
+
+    if (!process.env.JWT_SECRET) {
+      return next(new Error('Server configuration error: JWT_SECRET is not defined'));
+    }
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      socket.user = { id: decoded.id };
+      return next();
+    } catch (error) {
+      return next(new Error('Authentication error: invalid or expired token'));
+    }
   });
 
   // Store active users
@@ -27,9 +56,24 @@ export const initializeSocket = (httpServer, chatHandler = null) => {
   io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
-    // User joins with their ID
+    if (socket.user?.id) {
+      if (!activeUsers.has(socket.user.id)) {
+        activeUsers.set(socket.user.id, new Set());
+      }
+      activeUsers.get(socket.user.id).add(socket.id);
+      socket.join(`user-${socket.user.id}`);
+      console.log(`Authenticated user ${socket.user.id} joined room user-${socket.user.id}`);
+    }
+
+    // User joins additional rooms by ID if needed
     socket.on('user-join', (userId) => {
-      activeUsers.set(userId, socket.id);
+      if (!socket.user?.id || socket.user.id !== userId) {
+        return;
+      }
+      if (!activeUsers.has(userId)) {
+        activeUsers.set(userId, new Set());
+      }
+      activeUsers.get(userId).add(socket.id);
       socket.join(`user-${userId}`);
       console.log(`User ${userId} joined room user-${userId}`);
     });
@@ -208,10 +252,13 @@ export const initializeSocket = (httpServer, chatHandler = null) => {
     // Disconnect handler
     socket.on('disconnect', () => {
       // Remove user from active users
-      for (const [userId, socketId] of activeUsers.entries()) {
-        if (socketId === socket.id) {
-          activeUsers.delete(userId);
-          console.log(`User ${userId} disconnected`);
+      for (const [userId, socketIds] of activeUsers.entries()) {
+        if (socketIds.has(socket.id)) {
+          socketIds.delete(socket.id);
+          if (socketIds.size === 0) {
+            activeUsers.delete(userId);
+            console.log(`User ${userId} disconnected (all tabs closed)`);
+          }
           break;
         }
       }

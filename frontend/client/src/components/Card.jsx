@@ -1,29 +1,20 @@
 /**
  * Card Component
- * Design System: The Architectural Ledger
- * - Tonal layering: surface-container-lowest on surface background
- * - No borders; depth through background color shifts
- * - Rounded corners for architectural sophistication
+ * Design System: Architectural Estate
+ * - Crisp, clean, minimal look.
+ * - Rely on borders and background colors rather than heavy shadows.
  */
 export default function Card({ children, className = '', variant = 'elevated' }) {
   const variants = {
-    elevated: {
-      backgroundColor: '#ffffff',
-      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-    },
-    subtle: {
-      backgroundColor: '#e6f6ff',
-    },
-    accent: {
-      backgroundColor: '#d5ecf8',
-    },
+    elevated: "card-elevated", // bg-card border-border + crisp subtle shadow
+    subtle: "bg-secondary border border-transparent rounded-xl",
+    accent: "bg-primary text-primary-foreground rounded-xl shadow-lg",
   };
 
+  const bgClass = variants[variant] || variants.elevated;
+
   return (
-    <div
-      className={`rounded-xl transition-all duration-200 ${className}`}
-      style={variants[variant]}
-    >
+    <div className={`transition-all duration-200 ${bgClass} ${className}`}>
       {children}
     </div>
   );

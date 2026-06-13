@@ -118,7 +118,7 @@ export function hasRecentResetRequest(email, minutesThreshold = 5) {
 
 // Send reset email (simulated)
 export function sendPasswordResetEmail(email, token) {
-  const resetLink = `${window.location.origin}?resetToken=${token}`;
+  const resetLink = `${window.location.origin}/reset-password?resetToken=${token}`;
   
   // In production, this would call a backend API to send email
   const emailContent = {
@@ -151,7 +151,7 @@ export function sendPasswordResetEmail(email, token) {
 // Get reset token from URL
 export function getResetTokenFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  return params.get('resetToken');
+  return params.get('token') || params.get('resetToken');
 }
 
 // Validate password strength

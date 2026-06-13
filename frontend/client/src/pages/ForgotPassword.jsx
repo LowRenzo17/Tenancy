@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowRight, Mail, CheckCircle, AlertCircle } from 'lucide-react';
 import { createPasswordResetRequest, sendPasswordResetEmail, hasRecentResetRequest } from '../lib/passwordResetUtils';
+import apiClient from '../lib/api';
 
 /**
  * Forgot Password Page
@@ -46,79 +47,49 @@ export default function ForgotPassword({ onBack, onResetSent }) {
     setIsLoading(true);
     setErrors({});
 
-    // Simulate email sending delay
-    setTimeout(() => {
-      try {
-        // Create reset request
-        const resetRequest = createPasswordResetRequest(email);
+    try {
+      await apiClient.forgotPassword(email);
 
-        // Send email (simulated)
-        sendPasswordResetEmail(email, resetRequest.token);
-
-        setSubmitted(true);
-        setMessage(`Reset link sent to ${email}. Check your inbox for the verification email.`);
-        
-        // Notify parent component
-        if (onResetSent) {
-          onResetSent(email);
-        }
-      } catch (error) {
-        setErrors({
-          submit: 'Failed to send reset email. Please try again.',
-        });
+      setSubmitted(true);
+      setMessage(`Reset link sent to ${email}. Check your inbox for the verification email.`);
+      
+      // Notify parent component
+      if (onResetSent) {
+        onResetSent(email);
       }
-      setIsLoading(false);
-    }, 1000);
+    } catch (error) {
+      setErrors({
+        submit: error.message || 'Failed to send reset email. Please make sure the account exists and is active.',
+      });
+    }
+    setIsLoading(false);
   };
 
   return (
-    <div className="flex min-h-screen" style={{ backgroundColor: '#f3faff' }}>
+    <div className="flex min-h-screen bg-background">
       {/* Left Side */}
-      <section
-        className="hidden lg:flex lg:w-1/2 relative overflow-hidden flex-col justify-between p-16"
-        style={{
-          background: 'linear-gradient(135deg, #003441 0%, #0f4c5c 100%)',
-        }}
-      >
+      <section className="hidden lg:flex lg:w-1/2 relative overflow-hidden flex-col justify-between p-16 bg-primary">
         <div className="relative z-10">
-          <h1
-            className="text-3xl font-extrabold tracking-tight"
-            style={{
-              fontFamily: 'Manrope',
-              color: '#fff',
-            }}
-          >
+          <h1 className="text-3xl font-extrabold tracking-tight text-primary-foreground">
             Tenancy Slate
           </h1>
         </div>
 
         <div className="relative z-10 max-w-md">
           <div className="flex items-center gap-3 mb-4">
-            <Mail size={32} style={{ color: '#b6ebfe' }} />
-            <h2
-              className="text-3xl font-bold"
-              style={{
-                fontFamily: 'Manrope',
-                color: '#fff',
-              }}
-            >
+            <Mail size={32} className="text-primary-fixed-dim" />
+            <h2 className="text-3xl font-bold text-primary-foreground">
               Account Recovery
             </h2>
           </div>
-          <div className="w-24 h-1 mb-8" style={{ backgroundColor: '#b6ebfe' }} />
-          <p
-            className="text-lg font-medium"
-            style={{ color: '#87bbce' }}
-          >
+          <div className="w-24 h-1 mb-8 bg-primary-fixed-dim" />
+          <p className="text-lg font-medium text-primary-foreground/80">
             Forgot your password? No problem. We'll send you a secure link to reset it. Your account security is our priority.
           </p>
         </div>
 
         <div className="relative z-10">
-          <p
-            className="text-sm"
-            style={{ color: '#87bbce' }}
-          >
+          <p className="text-sm text-primary-foreground/80">
             ✓ Secure verification link<br />
             ✓ Link expires in 1 hour<br />
             ✓ Rate-limited for safety
@@ -127,20 +98,11 @@ export default function ForgotPassword({ onBack, onResetSent }) {
       </section>
 
       {/* Right Side */}
-      <section
-        className="w-full lg:w-1/2 flex items-center justify-center p-8 md:p-16 lg:p-24"
-        style={{ backgroundColor: '#f3faff' }}
-      >
+      <section className="w-full lg:w-1/2 flex items-center justify-center p-8 md:p-16 lg:p-24 bg-background">
         <div className="w-full max-w-md">
           {/* Mobile Logo */}
           <div className="lg:hidden mb-12">
-            <h2
-              className="text-2xl font-extrabold tracking-tight"
-              style={{
-                fontFamily: 'Manrope',
-                color: '#003441',
-              }}
-            >
+            <h2 className="text-2xl font-extrabold tracking-tight text-primary">
               Tenancy Slate
             </h2>
           </div>
@@ -149,16 +111,10 @@ export default function ForgotPassword({ onBack, onResetSent }) {
             <>
               {/* Header */}
               <header className="mb-10">
-                <h2
-                  className="text-3xl font-bold tracking-tight mb-2"
-                  style={{
-                    fontFamily: 'Manrope',
-                    color: '#071e27',
-                  }}
-                >
+                <h2 className="text-3xl font-bold tracking-tight mb-2 text-foreground">
                   Reset Your Password
                 </h2>
-                <p style={{ color: '#40484b' }}>
+                <p className="text-muted-foreground">
                   Enter your email address and we'll send you a link to reset your password.
                 </p>
               </header>
@@ -167,10 +123,7 @@ export default function ForgotPassword({ onBack, onResetSent }) {
               <form onSubmit={handleSubmit} className="space-y-6">
                 {/* Email Input */}
                 <div className="space-y-2">
-                  <label
-                    className="block text-sm font-semibold"
-                    style={{ color: '#40484b' }}
-                  >
+                  <label className="block text-sm font-semibold text-muted-foreground">
                     Email Address
                   </label>
                   <input
@@ -183,15 +136,10 @@ export default function ForgotPassword({ onBack, onResetSent }) {
                         setErrors(prev => ({ ...prev, email: '' }));
                       }
                     }}
-                    className="w-full px-4 py-3 rounded-xl outline-none transition-all"
-                    style={{
-                      backgroundColor: '#ffffff',
-                      border: `1px solid ${errors.email ? '#ba1a1a' : '#d5ecf8'}`,
-                      color: '#071e27',
-                    }}
+                    className={`w-full px-4 py-3 rounded-xl outline-none transition-all input-field ${errors.email ? 'border-destructive' : 'border-border'}`}
                   />
                   {errors.email && (
-                    <p style={{ color: '#ba1a1a', fontSize: '0.75rem' }}>
+                    <p className="text-xs text-destructive">
                       {errors.email}
                     </p>
                   )}
@@ -199,15 +147,9 @@ export default function ForgotPassword({ onBack, onResetSent }) {
 
                 {/* Error Message */}
                 {errors.submit && (
-                  <div
-                    className="p-4 rounded-lg flex items-start gap-3"
-                    style={{
-                      backgroundColor: '#fee2e2',
-                      border: '1px solid #fca5a5',
-                    }}
-                  >
-                    <AlertCircle size={20} style={{ color: '#dc2626', marginTop: '2px' }} />
-                    <p style={{ color: '#991b1b', fontSize: '0.875rem' }}>
+                  <div className="p-4 rounded-lg flex items-start gap-3 bg-destructive/10 border border-destructive/20">
+                    <AlertCircle size={20} className="text-destructive mt-[2px]" />
+                    <p className="text-sm text-destructive">
                       {errors.submit}
                     </p>
                   </div>
@@ -217,11 +159,7 @@ export default function ForgotPassword({ onBack, onResetSent }) {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-4 px-6 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-[0.98] flex items-center justify-center space-x-2 disabled:opacity-50"
-                  style={{
-                    background: 'linear-gradient(135deg, #003441 0%, #0f4c5c 100%)',
-                    fontFamily: 'Manrope',
-                  }}
+                  className="w-full py-4 px-6 btn-primary flex items-center justify-center space-x-2 disabled:opacity-50"
                 >
                   <span>{isLoading ? 'Sending...' : 'Send Reset Link'}</span>
                   <ArrowRight size={20} />
@@ -231,27 +169,15 @@ export default function ForgotPassword({ onBack, onResetSent }) {
                 <button
                   type="button"
                   onClick={onBack}
-                  className="w-full py-3 px-6 font-semibold rounded-xl transition-all"
-                  style={{
-                    backgroundColor: '#e6f6ff',
-                    color: '#003441',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#d5ecf8')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#e6f6ff')}
+                  className="w-full py-3 px-6 font-semibold rounded-xl transition-all bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border"
                 >
                   Back to Login
                 </button>
               </form>
 
               {/* Info Box */}
-              <div
-                className="mt-8 p-4 rounded-lg"
-                style={{
-                  backgroundColor: '#f0f9ff',
-                  border: '1px solid #bae6fd',
-                }}
-              >
-                <p style={{ fontSize: '0.875rem', color: '#0369a1' }}>
+              <div className="mt-8 p-4 rounded-lg bg-secondary border border-border">
+                <p className="text-sm text-primary">
                   💡 <strong>Tip:</strong> Check your spam folder if you don't see the email within a few minutes.
                 </p>
               </div>
@@ -260,36 +186,21 @@ export default function ForgotPassword({ onBack, onResetSent }) {
             <>
               {/* Success State */}
               <div className="text-center space-y-6">
-                <div
-                  className="w-16 h-16 rounded-full flex items-center justify-center mx-auto"
-                  style={{ backgroundColor: '#dcfce7' }}
-                >
-                  <CheckCircle size={32} style={{ color: '#16a34a' }} />
+                <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto bg-green-100">
+                  <CheckCircle size={32} className="text-green-600" />
                 </div>
 
                 <div>
-                  <h2
-                    className="text-2xl font-bold mb-2"
-                    style={{
-                      fontFamily: 'Manrope',
-                      color: '#071e27',
-                    }}
-                  >
+                  <h2 className="text-2xl font-bold mb-2 text-foreground">
                     Check Your Email
                   </h2>
-                  <p style={{ color: '#40484b' }}>
+                  <p className="text-muted-foreground">
                     {message}
                   </p>
                 </div>
 
-                <div
-                  className="p-4 rounded-lg"
-                  style={{
-                    backgroundColor: '#fef3c7',
-                    border: '1px solid #fcd34d',
-                  }}
-                >
-                  <p style={{ fontSize: '0.875rem', color: '#92400e' }}>
+                <div className="p-4 rounded-lg bg-orange-100 border border-orange-300">
+                  <p className="text-sm text-orange-800">
                     ⏱️ The reset link will expire in <strong>1 hour</strong> for security reasons.
                   </p>
                 </div>
@@ -300,25 +211,14 @@ export default function ForgotPassword({ onBack, onResetSent }) {
                       setSubmitted(false);
                       setEmail('');
                     }}
-                    className="w-full py-3 px-6 font-semibold rounded-xl transition-all text-white"
-                    style={{
-                      background: 'linear-gradient(135deg, #003441 0%, #0f4c5c 100%)',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
-                    onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                    className="w-full py-3 px-6 font-semibold rounded-xl transition-all btn-primary"
                   >
                     Try Another Email
                   </button>
 
                   <button
                     onClick={onBack}
-                    className="w-full py-3 px-6 font-semibold rounded-xl transition-all"
-                    style={{
-                      backgroundColor: '#e6f6ff',
-                      color: '#003441',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#d5ecf8')}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#e6f6ff')}
+                    className="w-full py-3 px-6 font-semibold rounded-xl transition-all bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border"
                   >
                     Back to Login
                   </button>
@@ -329,8 +229,8 @@ export default function ForgotPassword({ onBack, onResetSent }) {
 
           {/* Footer */}
           <div className="mt-12 text-center">
-            <p className="text-xs" style={{ color: '#70787c' }}>
-              Remember your password? <a href="#" onClick={onBack} style={{ color: '#003441', fontWeight: '600' }}>Sign in instead</a>
+            <p className="text-xs text-muted-foreground">
+              Remember your password? <a href="#" onClick={onBack} className="text-primary font-semibold hover:underline">Sign in instead</a>
             </p>
           </div>
         </div>

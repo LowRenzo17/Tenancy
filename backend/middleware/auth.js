@@ -14,8 +14,12 @@ export const protect = async (req, res, next) => {
     }
 
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret_key');
-      req.user = await User.findById(decoded.id);
+      if (!process.env.JWT_SECRET) {
+        return res.status(500).json({ success: false, message: 'Server misconfiguration: JWT_SECRET is missing' });
+      }
+
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = await User.findById(decoded.id).select('-password -twoFactorSecret -backupCodes -resetPasswordToken -resetPasswordExpires');
 
       if (!req.user) {
         return res.status(404).json({ success: false, message: 'User not found' });
@@ -23,7 +27,10 @@ export const protect = async (req, res, next) => {
 
       next();
     } catch (error) {
-      return res.status(401).json({ success: false, message: 'Not authorized to access this route' });
+      const message = error.name === 'TokenExpiredError'
+        ? 'Token expired'
+        : 'Invalid or expired token';
+      return res.status(401).json({ success: false, message });
     }
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -32,6 +39,14 @@ export const protect = async (req, res, next) => {
 
 export const authorize = (...roles) => {
   return (req, res, next) => {
+    // Check if user exists and has accountType
+    if (!req.user || !req.user.accountType) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated. Please log in.',
+      });
+    }
+
     if (!roles.includes(req.user.accountType)) {
       return res.status(403).json({
         success: false,
