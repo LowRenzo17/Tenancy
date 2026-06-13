@@ -2,19 +2,22 @@ import express from 'express';
 import Message from '../models/Message.js';
 import Conversation from '../models/Conversation.js';
 import User from '../models/User.js';
-import auth from '../middleware/auth.js';
+import Tenant from '../models/Tenant.js';
+import { protect } from '../middleware/auth.js';
+import { emitChatMessage } from '../utils/socketHandler.js';
 
 const router = express.Router();
 
 /**
  * Get all conversations for the current user
  */
-router.get('/conversations', auth, async (req, res) => {
+router.get('/conversations', protect, async (req, res) => {
   try {
     const userId = req.user.id;
 
     const conversations = await Conversation.find({
       participantIds: userId,
+      deletedFor: { $ne: userId },   // exclude conversations soft-deleted by this user
     })
       .populate('participantIds', 'fullName email')
       .populate('lastMessage')
@@ -36,7 +39,7 @@ router.get('/conversations', auth, async (req, res) => {
 /**
  * Get a specific conversation with all messages
  */
-router.get('/conversations/:conversationId', auth, async (req, res) => {
+router.get('/conversations/:conversationId', protect, async (req, res) => {
   try {
     const { conversationId } = req.params;
     const userId = req.user.id;
@@ -58,7 +61,11 @@ router.get('/conversations/:conversationId', auth, async (req, res) => {
       });
     }
 
-    const messages = await Message.find({ conversationId })
+    // Only return messages NOT deleted by the requesting user (soft-delete filter)
+    const messages = await Message.find({
+      conversationId,
+      deletedFor: { $ne: userId },
+    })
       .populate('senderId', 'fullName email')
       .sort({ createdAt: 1 });
 
@@ -78,21 +85,66 @@ router.get('/conversations/:conversationId', auth, async (req, res) => {
 
 /**
  * Create a new conversation
+ * Enforces ownership: owners can only message their own tenants;
+ * tenants can only message their assigned property manager.
  */
-router.post('/conversations', auth, async (req, res) => {
+router.post('/conversations', protect, async (req, res) => {
   try {
     const userId = req.user.id;
     const { participantIds, subject } = req.body;
 
+    if (!participantIds || participantIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'At least one participant is required' });
+    }
+
+    // ── Ownership validation ────────────────────────────────────────────
+    const requestingUser = await User.findById(userId);
+
+    if (requestingUser.accountType === 'owner') {
+      // Owners may only start conversations with tenants they own
+      const ownedTenants = await Tenant.find({
+        ownerId: userId,
+        userId: { $in: participantIds },
+      });
+      if (ownedTenants.length !== participantIds.length) {
+        return res.status(403).json({
+          success: false,
+          message: 'You can only message your own tenants',
+        });
+      }
+    } else if (requestingUser.accountType === 'tenant') {
+      // Tenants may only start conversations with their assigned property manager
+      const tenantProfile = await Tenant.findOne({
+        $or: [{ userId }, { email: requestingUser.email.toLowerCase() }],
+      });
+      if (!tenantProfile) {
+        return res.status(403).json({
+          success: false,
+          message: 'Tenant profile not found — please contact your property manager',
+        });
+      }
+      const allAllowed = participantIds.every(
+        (pid) => pid.toString() === tenantProfile.ownerId.toString()
+      );
+      if (!allAllowed) {
+        return res.status(403).json({
+          success: false,
+          message: 'Tenants can only message their assigned property manager',
+        });
+      }
+    }
+    // ── End ownership validation ────────────────────────────────────────
+
     // Ensure current user is in participants
     const allParticipants = [...new Set([userId, ...participantIds])];
 
-    // Check if conversation already exists
+    // Return existing conversation if one already exists between same parties
     let conversation = await Conversation.findOne({
       participantIds: { $all: allParticipants, $size: allParticipants.length },
     });
 
     if (conversation) {
+      await conversation.populate('participantIds', 'fullName email');
       return res.json({
         success: true,
         conversation,
@@ -103,6 +155,7 @@ router.post('/conversations', auth, async (req, res) => {
     // Create new conversation
     conversation = new Conversation({
       participantIds: allParticipants,
+      ownerId: userId,
       subject,
       conversationType: 'direct',
     });
@@ -127,7 +180,7 @@ router.post('/conversations', auth, async (req, res) => {
 /**
  * Send a message
  */
-router.post('/messages', auth, async (req, res) => {
+router.post('/messages', protect, async (req, res) => {
   try {
     const senderId = req.user.id;
     const { conversationId, content, receiverId } = req.body;
@@ -142,7 +195,7 @@ router.post('/messages', auth, async (req, res) => {
       });
     }
 
-    if (!conversation.participantIds.includes(senderId)) {
+    if (!conversation.participantIds.some(id => id.toString() === senderId)) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to send message in this conversation',
@@ -166,7 +219,26 @@ router.post('/messages', auth, async (req, res) => {
     conversation.lastMessage = message._id;
     conversation.lastMessageAt = new Date();
     conversation.messageCount = (conversation.messageCount || 0) + 1;
+    conversation.deletedFor = [];
     await conversation.save();
+
+    // Emit real-time notification to recipient via Socket.io
+    // This ensures broadcast/REST-sent messages arrive instantly (not just via socket send-message)
+    if (receiverId) {
+      const io = req.app.get('io');
+      if (io) {
+        const messagePayload = {
+          id: message._id,
+          conversationId: message.conversationId,
+          senderId: message.senderId,
+          receiverId: message.receiverId,
+          content: message.content,
+          createdAt: message.createdAt,
+          isRead: false,
+        };
+        emitChatMessage(io, receiverId.toString(), messagePayload);
+      }
+    }
 
     res.status(201).json({
       success: true,
@@ -184,7 +256,7 @@ router.post('/messages', auth, async (req, res) => {
 /**
  * Mark message as read
  */
-router.put('/messages/:messageId/read', auth, async (req, res) => {
+router.put('/messages/:messageId/read', protect, async (req, res) => {
   try {
     const { messageId } = req.params;
     const userId = req.user.id;
@@ -224,34 +296,9 @@ router.put('/messages/:messageId/read', auth, async (req, res) => {
 });
 
 /**
- * Get unread message count
- */
-router.get('/messages/unread/count', auth, async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    const unreadCount = await Message.countDocuments({
-      receiverId: userId,
-      isRead: false,
-    });
-
-    res.json({
-      success: true,
-      unreadCount,
-    });
-  } catch (error) {
-    console.error('Error getting unread count:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-});
-
-/**
  * Mark all messages in conversation as read
  */
-router.put('/conversations/:conversationId/read', auth, async (req, res) => {
+router.put('/conversations/:conversationId/read', protect, async (req, res) => {
   try {
     const { conversationId } = req.params;
     const userId = req.user.id;
@@ -282,9 +329,30 @@ router.put('/conversations/:conversationId/read', auth, async (req, res) => {
 });
 
 /**
- * Delete a message
+ * Get unread message count for the current user.
+ * Used by the sidebar badge to show pending unread messages.
  */
-router.delete('/messages/:messageId', auth, async (req, res) => {
+router.get('/messages/unread/count', protect, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const unreadCount = await Message.countDocuments({
+      receiverId: userId,
+      isRead: false,
+      deletedFor: { $ne: userId },
+    });
+    res.json({ success: true, unreadCount });
+  } catch (error) {
+    console.error('Error fetching unread count:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Delete a message — "for me only" (soft-delete)
+ * Adds the requesting user to the message's `deletedFor` array.
+ * The message remains visible to the other participant.
+ */
+router.delete('/messages/:messageId', protect, async (req, res) => {
   try {
     const { messageId } = req.params;
     const userId = req.user.id;
@@ -298,19 +366,24 @@ router.delete('/messages/:messageId', auth, async (req, res) => {
       });
     }
 
-    // Only sender can delete
-    if (message.senderId.toString() !== userId) {
+    // Only the sender or receiver of the message may delete it for themselves
+    const isSender = message.senderId.toString() === userId;
+    const isReceiver = message.receiverId.toString() === userId;
+    if (!isSender && !isReceiver) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to delete this message',
       });
     }
 
-    await Message.findByIdAndDelete(messageId);
+    // Soft-delete: add userId to deletedFor (idempotent with $addToSet)
+    await Message.findByIdAndUpdate(messageId, {
+      $addToSet: { deletedFor: userId },
+    });
 
     res.json({
       success: true,
-      message: 'Message deleted',
+      message: 'Message hidden from your view',
     });
   } catch (error) {
     console.error('Error deleting message:', error);
@@ -324,7 +397,7 @@ router.delete('/messages/:messageId', auth, async (req, res) => {
 /**
  * Archive conversation
  */
-router.put('/conversations/:conversationId/archive', auth, async (req, res) => {
+router.put('/conversations/:conversationId/archive', protect, async (req, res) => {
   try {
     const { conversationId } = req.params;
     const userId = req.user.id;
@@ -338,7 +411,7 @@ router.put('/conversations/:conversationId/archive', auth, async (req, res) => {
       });
     }
 
-    if (!conversation.participantIds.includes(userId)) {
+    if (!conversation.participantIds.some(id => id.toString() === userId)) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to archive this conversation',
@@ -362,9 +435,67 @@ router.put('/conversations/:conversationId/archive', auth, async (req, res) => {
 });
 
 /**
+ * Delete conversation — "for me only" (soft-delete)
+ *
+ * Adds the requesting user to:
+ *   1. conversation.deletedFor  → hides it from their conversation list
+ *   2. every message's deletedFor → hides all messages if they re-open it
+ *
+ * The other participant is NOT notified and can still read the full chat.
+ */
+router.delete('/conversations/:conversationId', protect, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user.id;
+
+    const conversation = await Conversation.findById(conversationId);
+
+    if (!conversation) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conversation not found',
+      });
+    }
+
+    if (!conversation.participantIds.some(id => id.toString() === userId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to delete this conversation',
+      });
+    }
+
+    // 1. Soft-delete the conversation for this user
+    await Conversation.findByIdAndUpdate(conversationId, {
+      $addToSet: { deletedFor: userId },
+    });
+
+    // 2. Soft-delete every message in the conversation for this user
+    await Message.updateMany(
+      { conversationId },
+      { $addToSet: { deletedFor: userId } }
+    );
+
+    // NO socket broadcast — this is a per-user operation only.
+    // The other participant sees nothing change.
+
+    res.json({
+      success: true,
+      message: 'Chat cleared from your view',
+    });
+  } catch (error) {
+    console.error('Error soft-deleting conversation:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+
+/**
  * Get messages with pagination
  */
-router.get('/conversations/:conversationId/messages', auth, async (req, res) => {
+router.get('/conversations/:conversationId/messages', protect, async (req, res) => {
   try {
     const { conversationId } = req.params;
     const { page = 1, limit = 50 } = req.query;
@@ -380,7 +511,7 @@ router.get('/conversations/:conversationId/messages', auth, async (req, res) => 
       });
     }
 
-    if (!conversation.participantIds.includes(userId)) {
+    if (!conversation.participantIds.some(id => id.toString() === userId)) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to view this conversation',
@@ -391,11 +522,15 @@ router.get('/conversations/:conversationId/messages', auth, async (req, res) => 
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
     const skip = (pageNum - 1) * limitNum;
 
-    // Get total count
-    const totalMessages = await Message.countDocuments({ conversationId });
+    // Get total count — exclude messages soft-deleted by this user
+    const messageFilter = {
+      conversationId,
+      deletedFor: { $ne: userId },
+    };
+    const totalMessages = await Message.countDocuments(messageFilter);
 
-    // Get paginated messages
-    const messages = await Message.find({ conversationId })
+    // Get paginated messages — exclude soft-deleted
+    const messages = await Message.find(messageFilter)
       .populate('senderId', 'fullName email')
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -430,7 +565,7 @@ router.get('/conversations/:conversationId/messages', auth, async (req, res) => 
 /**
  * Search conversations
  */
-router.get('/conversations/search/:query', auth, async (req, res) => {
+router.get('/conversations/search/:query', protect, async (req, res) => {
   try {
     const { query } = req.params;
     const userId = req.user.id;
@@ -462,7 +597,7 @@ router.get('/conversations/search/:query', auth, async (req, res) => {
 /**
  * Search messages within a conversation
  */
-router.get('/conversations/:conversationId/search', auth, async (req, res) => {
+router.get('/conversations/:conversationId/search', protect, async (req, res) => {
   try {
     const { conversationId } = req.params;
     const { query } = req.query;
@@ -485,7 +620,7 @@ router.get('/conversations/:conversationId/search', auth, async (req, res) => {
       });
     }
 
-    if (!conversation.participantIds.includes(userId)) {
+    if (!conversation.participantIds.some(id => id.toString() === userId)) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to search this conversation',
@@ -519,7 +654,7 @@ router.get('/conversations/:conversationId/search', auth, async (req, res) => {
 /**
  * Edit message
  */
-router.put('/messages/:messageId', auth, async (req, res) => {
+router.put('/messages/:messageId', protect, async (req, res) => {
   try {
     const { messageId } = req.params;
     const { content } = req.body;
@@ -570,7 +705,7 @@ router.put('/messages/:messageId', auth, async (req, res) => {
 /**
  * Add reaction to message
  */
-router.post('/messages/:messageId/reactions', auth, async (req, res) => {
+router.post('/messages/:messageId/reactions', protect, async (req, res) => {
   try {
     const { messageId } = req.params;
     const { reaction } = req.body;

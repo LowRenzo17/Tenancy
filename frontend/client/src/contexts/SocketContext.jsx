@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import io from 'socket.io-client';
 import { useAuth } from './AuthContext';
+import { toast } from 'sonner';
 
 const SocketContext = createContext();
 
@@ -8,14 +9,18 @@ export const SocketProvider = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
   const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [notifications, setNotifications] = useState([]);
 
   // Initialize Socket.io connection
   useEffect(() => {
     if (!isAuthenticated || !user) return;
 
     const socketUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
+    const token = sessionStorage.getItem('token') || localStorage.getItem('token');
+
     const newSocket = io(socketUrl, {
+      auth: {
+        token: token,
+      },
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
@@ -84,7 +89,7 @@ export const SocketProvider = ({ children }) => {
 
     // Payment events
     newSocket.on('payment-created', (data) => {
-      addNotification('Payment Created', `New payment record for $${data.amount}`);
+      addNotification('Payment Created', `New payment record for ${data.amount}`);
     });
 
     newSocket.on('payment-updated', (data) => {
@@ -92,11 +97,11 @@ export const SocketProvider = ({ children }) => {
     });
 
     newSocket.on('payment-received', (data) => {
-      addNotification('Payment Received', `Payment of $${data.amount} has been received`);
+      addNotification('Payment Received', `Payment of ${data.amount} has been received`);
     });
 
     newSocket.on('payment-overdue', (data) => {
-      addNotification('Payment Overdue', `Payment of $${data.amount} is now overdue`);
+      addNotification('Payment Overdue', `Payment of ${data.amount} is now overdue`);
     });
 
     // Message events
@@ -136,22 +141,17 @@ export const SocketProvider = ({ children }) => {
   }, [isAuthenticated, user]);
 
   const addNotification = (title, message) => {
-    const notification = {
-      id: Date.now(),
-      title,
-      message,
-      timestamp: new Date(),
-    };
-    setNotifications((prev) => [notification, ...prev].slice(0, 50)); // Keep last 50
-    console.log(`Notification: ${title} - ${message}`);
+    toast(title, {
+      description: message,
+    });
   };
 
   const clearNotification = (id) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    // Not needed with toast
   };
 
   const clearAllNotifications = () => {
-    setNotifications([]);
+    // Not needed with toast
   };
 
   // Emit events
@@ -238,10 +238,7 @@ export const SocketProvider = ({ children }) => {
   const value = {
     socket,
     isConnected,
-    notifications,
     addNotification,
-    clearNotification,
-    clearAllNotifications,
     emitPropertyCreated,
     emitPropertyUpdated,
     emitPropertyDeleted,

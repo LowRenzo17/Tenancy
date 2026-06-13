@@ -2,8 +2,44 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { useSocket } from './SocketContext';
 import { useAuth } from './AuthContext';
 import apiClient from '../lib/api';
+import { toast } from 'sonner';
 
 const ChatContext = createContext();
+
+/**
+ * Normalize a message object to a consistent shape regardless of source:
+ * - Socket messages: { id, senderId: string, senderName, timestamp, ... }
+ * - REST messages:  { _id, senderId: { _id, fullName }, createdAt, ... }
+ */
+function normalizeMessage(msg) {
+  return {
+    id: msg.id || msg._id?.toString(),
+    conversationId: msg.conversationId?.toString(),
+    senderId:
+      typeof msg.senderId === 'object' && msg.senderId !== null
+        ? msg.senderId._id?.toString()
+        : msg.senderId?.toString(),
+    senderName:
+      typeof msg.senderId === 'object' && msg.senderId !== null
+        ? msg.senderId.fullName
+        : msg.senderName,
+    receiverId: msg.receiverId?.toString?.() || msg.receiverId,
+    content: msg.content,
+    timestamp: msg.timestamp || msg.createdAt,
+    isRead: msg.isRead,
+    edited: msg.edited,
+    reactions: msg.reactions || {},
+  };
+}
+
+/** Get the receiver's ID out of a populated participantIds array */
+function getReceiverId(participantIds, myId) {
+  if (!participantIds || !myId) return undefined;
+  const receiver = participantIds.find(
+    (p) => (p?._id?.toString() || p?.toString()) !== myId.toString()
+  );
+  return receiver?._id?.toString() || receiver?.toString();
+}
 
 export const ChatProvider = ({ children }) => {
   const { socket, isConnected } = useSocket();
@@ -39,10 +75,37 @@ export const ChatProvider = ({ children }) => {
     if (!socket) return;
 
     socket.on('receive-message', (message) => {
-      if (currentConversation && message.conversationId === currentConversation._id) {
-        setMessages((prev) => [...prev, message]);
+      const normalized = normalizeMessage(message);
+      const isCurrentConv =
+        currentConversation &&
+        normalized.conversationId === currentConversation._id?.toString();
+
+      if (isCurrentConv) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === normalized.id)) return prev;
+          return [...prev, normalized];
+        });
+        // No badge increment — user is actively viewing this conversation
+      } else {
+        // Message arrived in a conversation the user isn't currently viewing.
+        // Only increment if it was NOT sent by this user (safety guard).
+        const myId = user?.id?.toString();
+        if (myId && normalized.senderId !== myId) {
+          setUnreadCount((c) => c + 1);
+        }
       }
-      // Refresh conversations to show latest message
+      // Refresh conversation list to show latest message preview
+      fetchConversations();
+    });
+
+    socket.on('message-sent', (message) => {
+      const normalized = normalizeMessage(message);
+      if (currentConversation && normalized.conversationId === currentConversation._id?.toString()) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === normalized.id)) return prev;
+          return [...prev, normalized];
+        });
+      }
       fetchConversations();
     });
 
@@ -85,11 +148,14 @@ export const ChatProvider = ({ children }) => {
       });
     });
 
-    socket.on('message-deleted', (data) => {
-      if (currentConversation && data.conversationId === currentConversation._id) {
-        setMessages((prev) => prev.filter((msg) => msg.id !== data.messageId));
-      }
+    // Full presence snapshot — sent on join and after any disconnect
+    socket.on('online-users', (data) => {
+      setOnlineUsers(new Set(data.userIds || []));
     });
+
+    // NOTE: 'message-deleted' is intentionally NOT listened to here.
+    // Deletion is "for me only" (soft-delete). The deleting user's local state
+    // is updated directly in deleteMessage(). No socket broadcast is sent.
 
     socket.on('message-edited', (data) => {
       if (currentConversation && data.conversationId === currentConversation._id) {
@@ -102,17 +168,15 @@ export const ChatProvider = ({ children }) => {
     });
 
     socket.on('message-reaction', (data) => {
-      if (currentConversation && data.conversationId === currentConversation._id) {
+      // Backend emits full reactions object: { messageId, conversationId, reactions: {} }
+      if (
+        currentConversation &&
+        data.conversationId?.toString() === currentConversation._id?.toString()
+      ) {
         setMessages((prev) =>
           prev.map((msg) => {
-            if (msg.id === data.messageId) {
-              return {
-                ...msg,
-                reactions: {
-                  ...(msg.reactions || {}),
-                  [data.userId]: data.reaction,
-                },
-              };
+            if (msg.id === data.messageId?.toString()) {
+              return { ...msg, reactions: data.reactions || {} };
             }
             return msg;
           })
@@ -120,18 +184,23 @@ export const ChatProvider = ({ children }) => {
       }
     });
 
+    // NOTE: 'conversation-deleted' is intentionally NOT listened to here.
+    // Delete Chat is "for me only" (soft-delete). The requesting user's state
+    // is updated directly in deleteConversation(). No socket broadcast is sent.
+
     return () => {
       socket.off('receive-message');
+      socket.off('message-sent');
       socket.off('user-typing');
       socket.off('user-stopped-typing');
       socket.off('message-read-receipt');
       socket.off('user-online');
       socket.off('user-offline');
-      socket.off('message-deleted');
+      socket.off('online-users');
       socket.off('message-edited');
       socket.off('message-reaction');
     };
-  }, [socket, currentConversation]);
+  }, [socket, currentConversation, user]);
 
   // Fetch conversations from API
   const fetchConversations = useCallback(async () => {
@@ -156,9 +225,16 @@ export const ChatProvider = ({ children }) => {
       const response = await apiClient.get(`/chat/conversations/${conversationId}`);
       if (response.success) {
         setCurrentConversation(response.conversation);
-        setMessages(response.messages || []);
-        // Mark as read
+        // Normalize to canonical message shape before storing in state
+        setMessages((response.messages || []).map(normalizeMessage));
         markConversationAsRead(conversationId);
+        // Join the conversation room to receive room-scoped socket events
+        if (socket && user) {
+          socket.emit('join-conversation', {
+            conversationId,
+            userId: user.id,
+          });
+        }
       }
     } catch (err) {
       setError(err.message);
@@ -166,7 +242,7 @@ export const ChatProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [socket, user]);
 
   // Fetch unread count
   const fetchUnreadCount = useCallback(async () => {
@@ -191,19 +267,27 @@ export const ChatProvider = ({ children }) => {
         });
         if (response.success) {
           if (!response.isNew) {
-            // Conversation already exists, just fetch messages
+            // Conversation already exists, fetch its messages
             await fetchMessages(response.conversation._id);
           } else {
-            // New conversation created
+            // New conversation
             setConversations((prev) => [response.conversation, ...prev]);
             setCurrentConversation(response.conversation);
             setMessages([]);
+            // Join the conversation room immediately for room-scoped events
+            if (socket && user) {
+              socket.emit('join-conversation', {
+                conversationId: response.conversation._id,
+                userId: user.id,
+              });
+            }
           }
           return response.conversation;
         }
       } catch (err) {
         setError(err.message);
         console.error('Error creating conversation:', err);
+        throw err; // Re-throw so callers can show their own error feedback
       } finally {
         setLoading(false);
       }
@@ -216,27 +300,25 @@ export const ChatProvider = ({ children }) => {
     (content) => {
       if (!currentConversation || !socket || !user) return;
 
+      const myId = user.id?.toString();
+      const receiverId = getReceiverId(currentConversation.participantIds, myId);
+
       const messageData = {
         conversationId: currentConversation._id,
-        senderId: user.id,
+        senderId: myId,
         senderName: user.fullName,
-        receiverId: currentConversation.participantIds.find((p) => p._id !== user.id)?._id,
+        receiverId,
         content,
       };
 
-      // Emit via Socket.io for real-time
+      // Emit via Socket.io for real-time and MongoDB persistence
       socket.emit('send-message', messageData);
-
-      // Also save to database
-      apiClient.post('/chat/messages', messageData).catch((err) => {
-        console.error('Error saving message:', err);
-      });
 
       // Clear typing indicator
       socket.emit('stop-typing', {
         conversationId: currentConversation._id,
-        senderId: user.id,
-        receiverId: messageData.receiverId,
+        senderId: myId,
+        receiverId,
       });
     },
     [currentConversation, socket, user]
@@ -246,11 +328,12 @@ export const ChatProvider = ({ children }) => {
   const sendTypingIndicator = useCallback(() => {
     if (!currentConversation || !socket || !user) return;
 
+    const myId = user.id?.toString();
     socket.emit('typing', {
       conversationId: currentConversation._id,
-      senderId: user.id,
+      senderId: myId,
       senderName: user.fullName,
-      receiverId: currentConversation.participantIds.find((p) => p._id !== user.id)?._id,
+      receiverId: getReceiverId(currentConversation.participantIds, myId),
     });
   }, [currentConversation, socket, user]);
 
@@ -279,44 +362,50 @@ export const ChatProvider = ({ children }) => {
   // Mark conversation as read
   const markConversationAsRead = useCallback(
     (conversationId) => {
-      if (!socket || !user) return;
+      if (!user || !conversationId) return;
+
+      // Optimistically clear the badge immediately for snappy UX
+      setUnreadCount(0);
 
       apiClient
         .put(`/chat/conversations/${conversationId}/read`, {})
         .then(() => {
-          socket.emit('conversation-read', {
-            conversationId,
-            userId: user.id,
-          });
+          if (socket) {
+            socket.emit('conversation-read', {
+              conversationId,
+              userId: user.id,
+            });
+          }
+          // Re-fetch the true count from DB in case there are other unread convs
           fetchUnreadCount();
         })
         .catch((err) => {
           console.error('Error marking conversation as read:', err);
+          // Restore accurate count on failure
+          fetchUnreadCount();
         });
     },
     [socket, user, fetchUnreadCount]
   );
 
-  // Delete message
+  // Delete message — "for me only" (soft-delete)
+  // The message is hidden from the deleting user only; the other participant still sees it.
   const deleteMessage = useCallback(
     (messageId) => {
-      if (!socket || !currentConversation) return;
+      if (!currentConversation) return;
 
       apiClient
         .delete(`/chat/messages/${messageId}`, {})
         .then(() => {
-          socket.emit('delete-message', {
-            messageId,
-            conversationId: currentConversation._id,
-            senderId: user.id,
-            receiverId: currentConversation.participantIds.find((p) => p._id !== user.id)?._id,
-          });
+          // Remove only from local state — no socket broadcast to the other user
+          setMessages((prev) => prev.filter((m) => m.id !== messageId));
         })
         .catch((err) => {
           console.error('Error deleting message:', err);
+          toast.error('Failed to delete message. Please try again.');
         });
     },
-    [socket, currentConversation, user]
+    [currentConversation]
   );
 
   // Edit message
@@ -324,33 +413,73 @@ export const ChatProvider = ({ children }) => {
     (messageId, newContent) => {
       if (!socket || !currentConversation) return;
 
+      const myId = user.id?.toString();
       socket.emit('edit-message', {
         messageId,
         conversationId: currentConversation._id,
-        senderId: user.id,
+        senderId: myId,
         newContent,
-        receiverId: currentConversation.participantIds.find((p) => p._id !== user.id)?._id,
+        receiverId: getReceiverId(currentConversation.participantIds, myId),
       });
     },
     [socket, currentConversation, user]
   );
 
-  // React to message
+  // React to message — optimistic update + socket persistence
   const reactToMessage = useCallback(
     (messageId, reaction) => {
-      if (!socket || !currentConversation) return;
+      if (!socket || !currentConversation || !user) return;
+
+      const myId = user.id?.toString();
+
+      // Optimistic update: toggle if same reaction, otherwise set new one
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.id !== messageId) return msg;
+          const current = msg.reactions || {};
+          // Toggle off if clicking the same reaction again
+          if (current[myId] === reaction) {
+            const updated = { ...current };
+            delete updated[myId];
+            return { ...msg, reactions: updated };
+          }
+          return { ...msg, reactions: { ...current, [myId]: reaction } };
+        })
+      );
 
       socket.emit('react-to-message', {
         messageId,
         conversationId: currentConversation._id,
-        userId: user.id,
+        userId: myId,
         reaction,
       });
     },
     [socket, currentConversation, user]
   );
 
-  // Archive conversation
+  // Delete entire chat — "for me only" (soft-delete)
+  // Hides the conversation AND all its messages from the current user's view.
+  // The other participant sees absolutely nothing change.
+  const deleteConversation = useCallback(
+    async (conversationId) => {
+      try {
+        await apiClient.delete(`/chat/conversations/${conversationId}`);
+
+        // Remove only from THIS user's local state — no socket to other party
+        setConversations((prev) => prev.filter((c) => c._id !== conversationId));
+        if (currentConversation?._id === conversationId) {
+          setCurrentConversation(null);
+          setMessages([]);
+        }
+        toast.success('Chat cleared from your view');
+      } catch (err) {
+        console.error('Error clearing conversation:', err);
+        toast.error(err?.message || 'Failed to clear chat. Please try again.');
+      }
+    },
+    [currentConversation]
+  );
+
   const archiveConversation = useCallback(
     async (conversationId) => {
       try {
@@ -392,6 +521,7 @@ export const ChatProvider = ({ children }) => {
     markMessageAsRead,
     markConversationAsRead,
     deleteMessage,
+    deleteConversation,
     editMessage,
     reactToMessage,
     archiveConversation,

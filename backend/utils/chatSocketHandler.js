@@ -6,6 +6,7 @@
 import Message from '../models/Message.js';
 import Conversation from '../models/Conversation.js';
 import User from '../models/User.js';
+import jwt from 'jsonwebtoken';
 
 // Store active users and their socket IDs
 const activeUsers = new Map();
@@ -14,6 +15,48 @@ const activeUsers = new Map();
 const typingUsers = new Map();
 
 export const initializeChatSocket = (io) => {
+  /**
+   * JWT Authentication Middleware
+   * Every socket connection must present a valid token.
+   * Rejects the connection before any event handler runs.
+   */
+  io.use((socket, next) => {
+    // Reuse verified user if already decoded by previous middleware
+    if (socket.user?.id) {
+      socket.userId = socket.user.id.toString();
+      return next();
+    }
+
+    const authToken =
+      socket.handshake.auth?.token ||
+      socket.handshake.query?.token ||
+      socket.handshake.headers?.authorization;
+
+    if (!authToken) {
+      return next(new Error('Authentication error: No token provided'));
+    }
+
+    let token;
+    if (typeof authToken === 'string' && authToken.startsWith('Bearer ')) {
+      token = authToken.split(' ')[1];
+    } else if (typeof authToken === 'string') {
+      token = authToken;
+    }
+
+    if (!token) {
+      return next(new Error('Authentication error: Invalid token format'));
+    }
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      // Attach verified userId to socket for use in all handlers
+      socket.userId = (decoded.id || decoded._id)?.toString();
+      next();
+    } catch (err) {
+      return next(new Error('Authentication error: Invalid or expired token'));
+    }
+  });
+
   io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
@@ -21,15 +64,28 @@ export const initializeChatSocket = (io) => {
      * User joins chat
      */
     socket.on('chat-user-join', (userId) => {
-      activeUsers.set(userId, socket.id);
+      const isFirstSocket = !activeUsers.has(userId);
+      if (isFirstSocket) {
+        activeUsers.set(userId, new Set());
+      }
+      activeUsers.get(userId).add(socket.id);
+
       socket.join(`user-${userId}`);
       socket.join(`chat-${userId}`);
       console.log(`User ${userId} joined chat (socket: ${socket.id})`);
 
-      // Broadcast user online status
-      io.emit('user-online', {
-        userId,
-        timestamp: new Date(),
+      if (isFirstSocket) {
+        // Tell everyone this user came online
+        io.emit('user-online', {
+          userId,
+          timestamp: new Date(),
+        });
+      }
+
+      // Send THIS joining user a snapshot of who is currently online
+      // so they don't have to wait for the next user-join broadcast
+      socket.emit('online-users', {
+        userIds: Array.from(activeUsers.keys()),
       });
     });
 
@@ -38,7 +94,13 @@ export const initializeChatSocket = (io) => {
      */
     socket.on('send-message', async (data) => {
       try {
-        const { conversationId, senderId, receiverId, senderName, content } = data;
+        const { conversationId, receiverId, senderName, content } = data;
+        // Use server-authenticated userId, NOT client-provided senderId (prevents spoofing)
+        const senderId = socket.userId;
+        if (!senderId) {
+          socket.emit('message-error', { error: 'Not authenticated' });
+          return;
+        }
 
         // Validate conversation exists
         const conversation = await Conversation.findById(conversationId);
@@ -66,6 +128,7 @@ export const initializeChatSocket = (io) => {
         conversation.lastMessage = message._id;
         conversation.lastMessageAt = new Date();
         conversation.messageCount = (conversation.messageCount || 0) + 1;
+        conversation.deletedFor = [];
         await conversation.save();
 
         const messageData = {
@@ -81,8 +144,8 @@ export const initializeChatSocket = (io) => {
         // Send to receiver
         io.to(`user-${receiverId}`).emit('receive-message', messageData);
 
-        // Send confirmation to sender
-        socket.emit('message-sent', {
+        // Send confirmation to sender (all tabs)
+        io.to(`user-${senderId}`).emit('message-sent', {
           ...messageData,
           status: 'sent',
         });
@@ -214,32 +277,21 @@ export const initializeChatSocket = (io) => {
     });
 
     /**
-     * Delete message
+     * Delete message — "for me only" (soft-delete via socket)
      */
     socket.on('delete-message', async (data) => {
       try {
-        const { messageId, conversationId, senderId } = data;
+        const { messageId, userId } = data;
 
-        // Delete from MongoDB
-        const message = await Message.findByIdAndDelete(messageId);
+        // Soft-delete: add userId to deletedFor — message stays for others
+        await Message.findByIdAndUpdate(messageId, {
+          $addToSet: { deletedFor: userId },
+        });
 
-        if (message) {
-          // Update conversation message count
-          await Conversation.findByIdAndUpdate(
-            conversationId,
-            { $inc: { messageCount: -1 } }
-          );
-
-          // Broadcast deletion to all participants
-          io.to(`conversation-${conversationId}`).emit('message-deleted', {
-            messageId: message._id.toString(),
-            conversationId,
-          });
-
-          console.log(`Message ${messageId} deleted`);
-        }
+        // No broadcast — this is a per-user delete only
+        console.log(`Message ${messageId} hidden for user ${userId}`);
       } catch (error) {
-        console.error('Error deleting message:', error);
+        console.error('Error soft-deleting message:', error);
       }
     });
 
@@ -294,11 +346,16 @@ export const initializeChatSocket = (io) => {
         );
 
         if (message) {
-          // Broadcast reaction to all participants
+          // Convert Mongoose Map → plain object before socket emit
+          // (JSON.stringify silently drops Map entries without this)
+          const reactionsObj = message.reactions
+            ? Object.fromEntries(message.reactions)
+            : {};
+
           io.to(`conversation-${conversationId}`).emit('message-reaction', {
             messageId: message._id.toString(),
             conversationId,
-            reactions: message.reactions || {},
+            reactions: reactionsObj,
           });
 
           console.log(`Reaction added to message ${messageId}`);
@@ -330,17 +387,26 @@ export const initializeChatSocket = (io) => {
      * User disconnects
      */
     socket.on('disconnect', () => {
-      // Find and remove user from active users
-      for (const [userId, socketId] of activeUsers.entries()) {
-        if (socketId === socket.id) {
-          activeUsers.delete(userId);
-          console.log(`User ${userId} disconnected`);
+      for (const [userId, socketIds] of activeUsers.entries()) {
+        if (socketIds.has(socket.id)) {
+          socketIds.delete(socket.id);
+          console.log(`Socket ${socket.id} for user ${userId} disconnected`);
 
-          // Broadcast user offline status
-          io.emit('user-offline', {
-            userId,
-            timestamp: new Date(),
-          });
+          if (socketIds.size === 0) {
+            activeUsers.delete(userId);
+            console.log(`User ${userId} went completely offline`);
+
+            // Tell everyone this user went offline
+            io.emit('user-offline', {
+              userId,
+              timestamp: new Date(),
+            });
+
+            // Send remaining clients an updated snapshot of who is online
+            io.emit('online-users', {
+              userIds: Array.from(activeUsers.keys()),
+            });
+          }
           break;
         }
       }

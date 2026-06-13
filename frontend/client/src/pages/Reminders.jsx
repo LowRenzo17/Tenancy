@@ -28,7 +28,7 @@ export default function Reminders({ tenants, properties }) {
           type: 'overdue',
           priority: 'high',
           title: 'Overdue Rent Payment',
-          description: `${tenant.name} at ${propertyName} has overdue rent of $${tenant.rentAmount.toLocaleString()}`,
+          description: `${tenant.name} at ${propertyName} has overdue rent of Ksh ${tenant.rentAmount.toLocaleString()}`,
           tenant: tenant.name,
           amount: tenant.rentAmount,
           property: propertyName,
@@ -43,7 +43,7 @@ export default function Reminders({ tenants, properties }) {
           type: 'pending',
           priority: 'medium',
           title: 'Pending Rent Payment',
-          description: `${tenant.name} at ${propertyName} has pending rent of $${tenant.rentAmount.toLocaleString()}`,
+          description: `${tenant.name} at ${propertyName} has pending rent of Ksh ${tenant.rentAmount.toLocaleString()}`,
           tenant: tenant.name,
           amount: tenant.rentAmount,
           property: propertyName,
@@ -58,7 +58,7 @@ export default function Reminders({ tenants, properties }) {
           type: 'paid',
           priority: 'low',
           title: 'Rent Payment Received',
-          description: `${tenant.name} at ${propertyName} has paid rent of $${tenant.rentAmount.toLocaleString()}`,
+          description: `${tenant.name} at ${propertyName} has paid rent of Ksh ${tenant.rentAmount.toLocaleString()}`,
           tenant: tenant.name,
           amount: tenant.rentAmount,
           property: propertyName,
@@ -102,252 +102,201 @@ export default function Reminders({ tenants, properties }) {
   const getReminderColor = (type) => {
     switch (type) {
       case 'overdue':
-        return { bg: 'rgba(186, 26, 26, 0.1)', border: '#ba1a1a', text: '#ba1a1a' };
+        return { bg: 'bg-[#ba1a1a]/10', border: 'border-[#ba1a1a]', text: 'text-[#ba1a1a]' };
       case 'pending':
-        return { bg: 'rgba(146, 64, 14, 0.1)', border: '#92400e', text: '#92400e' };
+        return { bg: 'bg-[#92400e]/10', border: 'border-[#92400e]', text: 'text-[#92400e]' };
       case 'paid':
-        return { bg: 'rgba(22, 101, 52, 0.1)', border: '#166534', text: '#166534' };
+        return { bg: 'bg-[#166534]/10', border: 'border-[#166534]', text: 'text-[#166534]' };
       default:
-        return { bg: '#e6f6ff', border: '#003441', text: '#003441' };
+        return { bg: 'bg-[#e6f6ff]', border: 'border-[#003441]', text: 'text-[#003441]' };
     }
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-8">
       {/* Page Header */}
-      <div>
-        <h1 className="text-4xl font-bold mb-2" style={{ fontFamily: 'Manrope', color: '#071e27' }}>
-          Rent Payment Reminders
-        </h1>
-        <p style={{ color: '#40484b' }}>Automated notifications for rent payments and tenant follow-ups</p>
+      <div className="flex justify-between items-end border-b border-border pb-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground mb-1">
+            Rent Payment Reminders
+          </h1>
+          <p className="text-sm text-muted-foreground">Automated notifications for rent payments and tenant follow-ups.</p>
+        </div>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card variant="elevated" className="p-4">
-          <div className="flex items-center gap-3">
-            <div
-              className="p-3 rounded-lg"
-              style={{
-                backgroundColor: 'rgba(186, 26, 26, 0.1)',
-              }}
-            >
-              <AlertCircle size={20} style={{ color: '#ba1a1a' }} />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card variant="elevated" className="p-6 bg-white border-t-4 border-t-[#ba1a1a]">
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-3 rounded-xl bg-[#ba1a1a]/10">
+              <AlertCircle size={24} className="text-[#ba1a1a]" />
             </div>
-            <div>
-              <p className="text-xs" style={{ color: '#40484b' }}>Overdue Payments</p>
-              <p className="text-2xl font-bold" style={{ fontFamily: 'Manrope', color: '#ba1a1a' }}>
-                {overdueCount}
-              </p>
-            </div>
+            <p className="text-4xl font-black tracking-tight text-[#ba1a1a]">
+              {overdueCount}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#ba1a1a]/70">Overdue Payments</p>
           </div>
         </Card>
 
-        <Card variant="elevated" className="p-4">
-          <div className="flex items-center gap-3">
-            <div
-              className="p-3 rounded-lg"
-              style={{
-                backgroundColor: 'rgba(146, 64, 14, 0.1)',
-              }}
-            >
-              <Clock size={20} style={{ color: '#92400e' }} />
+        <Card variant="elevated" className="p-6 bg-white border-t-4 border-t-[#92400e]">
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-3 rounded-xl bg-[#92400e]/10">
+              <Clock size={24} className="text-[#92400e]" />
             </div>
-            <div>
-              <p className="text-xs" style={{ color: '#40484b' }}>Pending Payments</p>
-              <p className="text-2xl font-bold" style={{ fontFamily: 'Manrope', color: '#92400e' }}>
-                {pendingCount}
-              </p>
-            </div>
+            <p className="text-4xl font-black tracking-tight text-[#92400e]">
+              {pendingCount}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#92400e]/70">Pending Payments</p>
           </div>
         </Card>
 
-        <Card variant="elevated" className="p-4">
-          <div className="flex items-center gap-3">
-            <div
-              className="p-3 rounded-lg"
-              style={{
-                backgroundColor: 'rgba(22, 101, 52, 0.1)',
-              }}
-            >
-              <CheckCircle size={20} style={{ color: '#166534' }} />
+        <Card variant="elevated" className="p-6 bg-white border-t-4 border-t-[#166534]">
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-3 rounded-xl bg-[#166534]/10">
+              <CheckCircle size={24} className="text-[#166534]" />
             </div>
-            <div>
-              <p className="text-xs" style={{ color: '#40484b' }}>Payments Received</p>
-              <p className="text-2xl font-bold" style={{ fontFamily: 'Manrope', color: '#166534' }}>
-                {paidCount}
-              </p>
-            </div>
+            <p className="text-4xl font-black tracking-tight text-[#166534]">
+              {paidCount}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#166534]/70">Payments Received</p>
           </div>
         </Card>
       </div>
 
       {/* Reminders List */}
-      {allReminders.length > 0 ? (
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold" style={{ fontFamily: 'Manrope', color: '#071e27' }}>
-              Active Reminders ({allReminders.length})
-            </h2>
-            <button
-              onClick={handleDismissAll}
-              className="text-sm px-4 py-2 rounded-lg transition-colors"
-              style={{
-                color: '#003441',
-                backgroundColor: 'transparent',
-              }}
-              onMouseEnter={(e) => (e.target.style.backgroundColor = '#e6f6ff')}
-              onMouseLeave={(e) => (e.target.style.backgroundColor = 'transparent')}
-            >
-              Dismiss All
-            </button>
-          </div>
+      <Card variant="elevated" className="p-0 overflow-hidden">
+        {allReminders.length > 0 ? (
+          <div>
+            <div className="flex justify-between items-center p-6 border-b border-border bg-secondary/30">
+              <h2 className="text-lg font-bold tracking-tight text-foreground">
+                Active Reminders <span className="text-sm font-medium text-muted-foreground ml-2">/ {allReminders.length} pending</span>
+              </h2>
+              <button
+                onClick={handleDismissAll}
+                className="text-[10px] font-bold uppercase tracking-widest px-4 py-2 rounded-lg transition-colors bg-white border border-border text-foreground hover:bg-slate-50"
+              >
+                Dismiss All
+              </button>
+            </div>
 
-          <div className="space-y-3">
-            {allReminders.map((reminder, idx) => {
-              const colors = getReminderColor(reminder.type);
-              return (
-                <Card key={reminder.id} variant={idx % 2 === 0 ? 'elevated' : 'subtle'} className="p-4">
-                  <div className="flex items-start gap-4">
-                    <div className="pt-1">{getReminderIcon(reminder.type)}</div>
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h3 className="font-semibold" style={{ color: '#071e27' }}>
-                            {reminder.title}
-                          </h3>
-                          <p className="text-sm mt-1" style={{ color: '#40484b' }}>
-                            {reminder.description}
-                          </p>
-                          <div className="flex gap-4 mt-3 text-xs">
-                            <span style={{ color: '#40484b' }}>
-                              <strong>Tenant:</strong> {reminder.tenant}
-                            </span>
-                            <span style={{ color: '#40484b' }}>
-                              <strong>Property:</strong> {reminder.property}
-                            </span>
-                            <span style={{ color: '#40484b' }}>
-                              <strong>Amount:</strong> ${reminder.amount.toLocaleString()}
-                            </span>
+            <div className="divide-y divide-border">
+              {allReminders.map((reminder, idx) => {
+                const colors = getReminderColor(reminder.type);
+                return (
+                  <div key={reminder.id} className={`p-6 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-secondary/20'}`}>
+                    <div className="flex items-start gap-6">
+                      <div className={`mt-1 p-2 rounded-lg ${colors.bg}`}>{getReminderIcon(reminder.type)}</div>
+                      <div className="flex-1">
+                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                          <div>
+                            <h3 className="text-lg font-bold tracking-tight text-foreground">
+                              {reminder.title}
+                            </h3>
+                            <p className="text-sm font-medium text-muted-foreground mt-1">
+                              {reminder.description}
+                            </p>
+                            <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 text-xs font-semibold">
+                              <span className="text-foreground">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground block mb-0.5">Tenant</span>
+                                {reminder.tenant}
+                              </span>
+                              <span className="text-foreground">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground block mb-0.5">Property</span>
+                                {reminder.property}
+                              </span>
+                              <span className="text-foreground text-base">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground block mb-0.5">Amount</span>
+                                Ksh {reminder.amount.toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end shrink-0 gap-2">
+                             <button
+                              onClick={() => handleDismiss(reminder.id)}
+                              className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${colors.bg} ${colors.text} border border-transparent hover:border-border`}
+                            >
+                              Dismiss
+                            </button>
+                            <p className={`text-[10px] font-bold uppercase tracking-widest mt-2 px-2 py-1 ${colors.bg} ${colors.text} rounded`}>
+                              Action: {reminder.action}
+                            </p>
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleDismiss(reminder.id)}
-                          className="px-3 py-1 rounded text-xs font-medium transition-colors"
-                          style={{
-                            color: colors.text,
-                            backgroundColor: colors.bg,
-                            border: `1px solid ${colors.border}`,
-                          }}
-                          onMouseEnter={(e) => (e.target.style.opacity = '0.8')}
-                          onMouseLeave={(e) => (e.target.style.opacity = '1')}
-                        >
-                          Dismiss
-                        </button>
-                      </div>
-                      <div className="mt-3 pt-3" style={{ borderTop: '1px solid #d5ecf8' }}>
-                        <p className="text-xs font-medium" style={{ color: colors.text }}>
-                          Action: {reminder.action}
-                        </p>
                       </div>
                     </div>
                   </div>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        <Card variant="subtle" className="p-12 text-center">
-          <div style={{ color: '#40484b' }}>
-            <Bell size={48} className="mx-auto mb-4" style={{ opacity: 0.5 }} />
-            <p className="text-lg font-medium">No active reminders</p>
-            <p className="text-sm mt-2">All rent payments are up to date!</p>
-          </div>
-        </Card>
-      )}
-
-      {/* Reminder Settings Info */}
-      <Card variant="subtle" className="p-6">
-        <h3 className="text-lg font-semibold mb-4" style={{ fontFamily: 'Manrope', color: '#071e27' }}>
-          How Reminders Work
-        </h3>
-        <div className="space-y-3" style={{ color: '#40484b' }}>
-          <div className="flex gap-3">
-            <div
-              className="p-2 rounded"
-              style={{
-                backgroundColor: 'rgba(186, 26, 26, 0.1)',
-                minWidth: '40px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <AlertCircle size={20} style={{ color: '#ba1a1a' }} />
-            </div>
-            <div>
-              <p className="font-semibold" style={{ color: '#071e27' }}>Overdue Reminders</p>
-              <p className="text-sm">Triggered when a tenant's rent payment is past due. Requires immediate follow-up.</p>
+                );
+              })}
             </div>
           </div>
-          <div className="flex gap-3">
-            <div
-              className="p-2 rounded"
-              style={{
-                backgroundColor: 'rgba(146, 64, 14, 0.1)',
-                minWidth: '40px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Clock size={20} style={{ color: '#92400e' }} />
-            </div>
-            <div>
-              <p className="font-semibold" style={{ color: '#071e27' }}>Pending Reminders</p>
-              <p className="text-sm">Triggered when rent payment is pending. Send a reminder to the tenant.</p>
-            </div>
+        ) : (
+          <div className="p-16 text-center bg-white">
+            <Bell size={48} className="mx-auto mb-4 text-muted-foreground opacity-30" />
+            <p className="text-lg font-bold tracking-tight text-foreground">No active reminders</p>
+            <p className="text-sm font-medium text-muted-foreground mt-2">All rent payments are up to date.</p>
           </div>
-          <div className="flex gap-3">
-            <div
-              className="p-2 rounded"
-              style={{
-                backgroundColor: 'rgba(22, 101, 52, 0.1)',
-                minWidth: '40px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <CheckCircle size={20} style={{ color: '#166534' }} />
-            </div>
-            <div>
-              <p className="font-semibold" style={{ color: '#071e27' }}>Payment Confirmations</p>
-              <p className="text-sm">Informational reminders showing successful rent payments received.</p>
-            </div>
-          </div>
-        </div>
+        )}
       </Card>
 
-      {/* Action Items */}
-      {overdueCount > 0 && (
-        <Card
-          variant="elevated"
-          className="p-6"
-          style={{
-            backgroundColor: 'rgba(186, 26, 26, 0.05)',
-            borderLeft: '4px solid #ba1a1a',
-          }}
-        >
-          <h3 className="text-lg font-semibold mb-2" style={{ color: '#ba1a1a' }}>
-            ⚠️ Urgent Action Required
+      {/* Reminder Settings Info */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+        <Card variant="subtle" className="p-6 bg-secondary/30 border-l-4 border-l-[#003441]">
+          <h3 className="text-sm font-bold uppercase tracking-widest text-foreground mb-4">
+            How Reminders Work
           </h3>
-          <p style={{ color: '#40484b' }}>
-            You have {overdueCount} overdue rent payment{overdueCount !== 1 ? 's' : ''}. Contact these tenants immediately to resolve payment issues and avoid further complications.
-          </p>
+          <div className="space-y-4 text-sm">
+            <div className="flex gap-4">
+              <div className="w-10 h-10 rounded-lg bg-[#ba1a1a]/10 flex items-center justify-center shrink-0">
+                <AlertCircle size={20} className="text-[#ba1a1a]" />
+              </div>
+              <div>
+                <p className="font-bold text-foreground">Overdue Reminders</p>
+                <p className="text-muted-foreground font-medium mt-1">Triggered when a tenant's rent payment is past due. Requires immediate follow-up.</p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="w-10 h-10 rounded-lg bg-[#92400e]/10 flex items-center justify-center shrink-0">
+                <Clock size={20} className="text-[#92400e]" />
+              </div>
+              <div>
+                <p className="font-bold text-foreground">Pending Reminders</p>
+                <p className="text-muted-foreground font-medium mt-1">Triggered when rent payment is pending. Send a reminder to the tenant.</p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="w-10 h-10 rounded-lg bg-[#166534]/10 flex items-center justify-center shrink-0">
+                <CheckCircle size={20} className="text-[#166534]" />
+              </div>
+              <div>
+                <p className="font-bold text-foreground">Payment Confirmations</p>
+                <p className="text-muted-foreground font-medium mt-1">Informational reminders showing successful rent payments received.</p>
+              </div>
+            </div>
+          </div>
         </Card>
-      )}
+
+        {/* Action Items */}
+        {overdueCount > 0 && (
+          <Card
+            variant="elevated"
+            className="p-6 bg-[#ba1a1a]/5 border border-[#ba1a1a]/20"
+          >
+            <h3 className="text-lg font-bold tracking-tight text-[#ba1a1a] mb-2 flex items-center gap-2">
+              <AlertCircle size={20} />
+              Urgent Action Required
+            </h3>
+            <p className="text-sm font-medium text-slate-700">
+              You have {overdueCount} overdue rent payment{overdueCount !== 1 ? 's' : ''}. Contact these tenants immediately to resolve payment issues and avoid further complications.
+            </p>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

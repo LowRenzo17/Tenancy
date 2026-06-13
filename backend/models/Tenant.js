@@ -20,6 +20,7 @@ const tenantSchema = new mongoose.Schema(
     email: {
       type: String,
       required: true,
+      unique: true,
       lowercase: true,
     },
     phone: {
@@ -30,6 +31,11 @@ const tenantSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Property',
       required: true,
+    },
+    unitNumber: {
+      type: String,
+      default: '',
+      trim: true,
     },
     rentStatus: {
       type: String,
@@ -82,6 +88,19 @@ const tenantSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    inviteToken: {
+      type: String,
+      default: null,
+    },
+    inviteExpiresAt: {
+      type: Date,
+      default: null,
+    },
+    inviteStatus: {
+      type: String,
+      enum: ['none', 'pending', 'accepted'],
+      default: 'none',
     },
     createdAt: {
       type: Date,

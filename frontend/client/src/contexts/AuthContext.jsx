@@ -48,7 +48,8 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (response.success) {
-        apiClient.setToken(response.token);
+        // Signup = new full session — persist
+        apiClient.setPersistentToken(response.token);
         setUser(response.user);
         setIsAuthenticated(true);
         return response;
@@ -59,23 +60,70 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const login = async (email, password) => {
+  const login = async (email, password, accountType) => {
     try {
       setError(null);
-      const response = await apiClient.login(email, password);
+      const response = await apiClient.login(email, password, accountType);
 
       if (response.success) {
-        if (response.requiresTwoFactor) {
-          // 2FA required, return temp token
+        if (response.requiresPasswordChange) {
+          // Stop here so the UI can render the force reset form
+          // Use session-only token so it doesn't overwrite other users in other tabs
+          apiClient.setToken(response.tempToken);
+          return response;
+        } else if (response.requiresTwoFactor) {
+          // 2FA required — temp token, session-scoped only
           apiClient.setToken(response.tempToken);
           return response;
         } else {
-          // Login successful
-          apiClient.setToken(response.token);
+          // Successful full login — persist across page reloads
+          apiClient.setPersistentToken(response.token);
           setUser(response.user);
           setIsAuthenticated(true);
           return response;
         }
+      }
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  };
+
+  const googleLogin = async (token, accountType) => {
+    try {
+      setError(null);
+      const response = await apiClient.googleLogin(token, accountType);
+
+      if (response.success) {
+        if (response.requiresTwoFactor) {
+          // Temp token — session-scoped only
+          apiClient.setToken(response.tempToken);
+          return response;
+        } else {
+          // Successful Google login — persist
+          apiClient.setPersistentToken(response.token);
+          setUser(response.user);
+          setIsAuthenticated(true);
+          return response;
+        }
+      }
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  };
+
+  const forcePasswordReset = async (tempToken, newPassword) => {
+    try {
+      setError(null);
+      const response = await apiClient.forcePasswordReset(tempToken, newPassword);
+
+      if (response.success) {
+        // Persist the new token — this is the tenant's first real login after reset
+        apiClient.setPersistentToken(response.token);
+        setUser(response.user);
+        setIsAuthenticated(true);
+        return response;
       }
     } catch (err) {
       setError(err.message);
@@ -89,7 +137,25 @@ export const AuthProvider = ({ children }) => {
       const response = await apiClient.verify2FA(code);
 
       if (response.success) {
-        apiClient.setToken(response.token);
+        // 2FA complete — persist the real session token
+        apiClient.setPersistentToken(response.token);
+        setUser(response.user);
+        setIsAuthenticated(true);
+        return response;
+      }
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  };
+
+  const acceptInvite = async (token, inviteData) => {
+    try {
+      setError(null);
+      const response = await apiClient.acceptInvite(token, inviteData);
+
+      if (response.success) {
+        apiClient.setPersistentToken(response.token);
         setUser(response.user);
         setIsAuthenticated(true);
         return response;
@@ -101,6 +167,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    sessionStorage.removeItem('token');
     localStorage.removeItem('token');
     apiClient.setToken(null);
     setUser(null);
@@ -129,7 +196,10 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated,
     signup,
     login,
+    googleLogin,
+    forcePasswordReset,
     verify2FA,
+    acceptInvite,
     logout,
     updateProfile,
   };

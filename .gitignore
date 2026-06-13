@@ -1,27 +1,34 @@
-# Dependencies
+# ── Dependencies ──────────────────────────────────────────────────────────────
 **/node_modules
 .pnpm-store/
 
-# Build outputs
+# ── Build outputs ─────────────────────────────────────────────────────────────
 dist/
 build/
 *.dist
 
-# Environment variables
+# ── Environment variables ─────────────────────────────────────────────────────
+# NEVER commit .env files — they contain secrets (JWT, DB URI, SMTP passwords)
 .env
 .env.local
+.env.development
 .env.development.local
+.env.test
 .env.test.local
+.env.production
 .env.production.local
+backend/.env
+frontend/client/.env
+frontend/client/.env.*
 
-# IDE and editor files
+# ── IDE and editor ────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS generated files
+# ── OS generated ──────────────────────────────────────────────────────────────
 .DS_Store
 .DS_Store?
 ._*
@@ -30,8 +37,8 @@ build/
 ehthumbs.db
 Thumbs.db
 
-# Logs
-logs
+# ── Logs ──────────────────────────────────────────────────────────────────────
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -39,74 +46,69 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Runtime data
-pids
+# ── Runtime data ──────────────────────────────────────────────────────────────
+pids/
 *.pid
 *.seed
 *.pid.lock
 
-# Coverage directory used by tools like istanbul
+# ── Test coverage ─────────────────────────────────────────────────────────────
 coverage/
 *.lcov
+.nyc_output/
 
-# nyc test coverage
-.nyc_output
-
-# Dependency directories
-jspm_packages/
-
-# TypeScript cache
+# ── TypeScript ────────────────────────────────────────────────────────────────
 *.tsbuildinfo
 
-# Optional npm cache directory
+# ── Package manager caches ────────────────────────────────────────────────────
 .npm
-
-# Optional eslint cache
-.eslintcache
-
-# Microbundle cache
-.rpt2_cache/
-.rts2_cache_cjs/
-.rts2_cache_es/
-.rts2_cache_umd/
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
 .yarn-integrity
+.pnp.*
+jspm_packages/
 
-# parcel-bundler cache (https://parceljs.org/)
+# ── Linter / formatter caches ─────────────────────────────────────────────────
+.eslintcache
+.stylelintcache
+
+# ── Vite ──────────────────────────────────────────────────────────────────────
+.vite/
+
+# ── Parcel ────────────────────────────────────────────────────────────────────
 .cache
 .parcel-cache
 
-# Next.js build output
-.next
+# ── Next.js ───────────────────────────────────────────────────────────────────
+.next/
+out/
 
-# Nuxt.js build / generate output
-.nuxt
+# ── Nuxt.js ───────────────────────────────────────────────────────────────────
+.nuxt/
 
-# Gatsby files
-.cache/
+# ── Storybook ─────────────────────────────────────────────────────────────────
+.out/
+.storybook-out/
+storybook-static/
 
-# Storybook build outputs
-.out
-.storybook-out
-
-# Temporary folders
+# ── Temp folders ──────────────────────────────────────────────────────────────
 tmp/
 temp/
 
-# Database
+# ── Database files ────────────────────────────────────────────────────────────
 *.db
 *.sqlite
 *.sqlite3
 
-# Webdev artifacts (checkpoint zips, migrations, etc.)
-.webdev/
+# ── SSL / certificates ────────────────────────────────────────────────────────
+*.pem
+*.key
+*.crt
+*.cert
+*.p12
 
-# Manus version file (auto-generated, not part of source)
-client/public/__manus__/version.json
+# ── Uploads / user-generated content ─────────────────────────────────────────
+# Uncomment if you store uploads locally:
+# uploads/
+
+# ── Project-specific ──────────────────────────────────────────────────────────
+.webdev/
+patches/

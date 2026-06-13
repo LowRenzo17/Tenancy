@@ -43,97 +43,83 @@
 }
 
 :root {
-  /* Design System: The Architectural Ledger - Digital Estate */
-  /* Primary: Deep Navy (#003441) - Authority & Trust */
-  /* Surface: Glacial Blue (#f3faff) - Clean, Editorial */
+  /* Design System: Architectural Estate */
+  --primary: #052e37; /* Deep Indigo/Teal Accent */
+  --primary-foreground: #ffffff;
   
-  --primary: #003441;
-  --primary-foreground: #f3faff;
-  --primary-container: #0f4c5c;
-  --primary-fixed-dim: #9acee1;
+  --background: #f8fafc; /* Crisp off-white */
+  --foreground: #0f172a; /* Charcoal */
   
-  --sidebar-primary: #003441;
-  --sidebar-primary-foreground: #f3faff;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
   
-  /* Surface Hierarchy - No-Line Rule */
-  --surface: #f3faff;
-  --surface-container-low: #e6f6ff;
-  --surface-container-lowest: #ffffff;
-  --surface-container-high: #d5ecf8;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
   
-  --on-surface: #071e27;
-  --on-surface-variant: #40484b;
+  --secondary: #f1f5f9; /* Warm gray/slate for surfaces */
+  --secondary-foreground: #0f172a;
   
-  /* Accent Colors */
-  --chart-1: #0f4c5c;
-  --chart-2: #1a6b7f;
-  --chart-3: #2a8fa3;
-  --chart-4: #3ab3c7;
-  --chart-5: #9acee1;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
   
-  /* Status Colors */
-  --error: #ba1a1a;
-  --error-container: #ffdad6;
+  --accent: #f1f5f9;
+  --accent-foreground: #052e37;
+  
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  
+  --border: #e2e8f0; /* Precise fine lines */
+  --input: #e2e8f0;
+  --ring: #0f172a;
+  
+  /* Chart Colors */
+  --chart-1: #052e37;
+  --chart-2: #334155;
+  --chart-3: #64748b;
+  --chart-4: #94a3b8;
+  --chart-5: #cbd5e1;
+  
+  /* Sidebar */
+  --sidebar: #f8fafc;
+  --sidebar-foreground: #0f172a;
+  --sidebar-primary: #052e37;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f5f9;
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #0f172a;
   
   --radius: 0.375rem;
-  --background: #f3faff;
-  --foreground: #071e27;
-  --card: #ffffff;
-  --card-foreground: #071e27;
-  --popover: #ffffff;
-  --popover-foreground: #071e27;
-  --secondary: #e6f6ff;
-  --secondary-foreground: #0f4c5c;
-  --muted: #c7dde9;
-  --muted-foreground: #40484b;
-  --accent: #0f4c5c;
-  --accent-foreground: #f3faff;
-  --destructive: #ba1a1a;
-  --destructive-foreground: #ffffff;
-  --border: #d5ecf8;
-  --input: #ffffff;
-  --ring: #306576;
-  --sidebar: #f3faff;
-  --sidebar-foreground: #071e27;
-  --sidebar-accent: #e6f6ff;
-  --sidebar-accent-foreground: #0f4c5c;
-  --sidebar-border: #d5ecf8;
-  --sidebar-ring: #306576;
 }
 
 .dark {
-  --primary: #9acee1;
-  --primary-foreground: #003441;
-  --sidebar-primary: #9acee1;
-  --sidebar-primary-foreground: #003441;
-  --background: #071e27;
-  --foreground: #e6f6ff;
-  --card: #0f4c5c;
-  --card-foreground: #e6f6ff;
-  --popover: #0f4c5c;
-  --popover-foreground: #e6f6ff;
-  --secondary: #1a6b7f;
-  --secondary-foreground: #d5ecf8;
-  --muted: #40484b;
-  --muted-foreground: #9acee1;
-  --accent: #9acee1;
-  --accent-foreground: #003441;
-  --destructive: #ffb4ab;
-  --destructive-foreground: #690005;
-  --border: #1a6b7f;
-  --input: #0f4c5c;
-  --ring: #9acee1;
-  --chart-1: #9acee1;
-  --chart-2: #3ab3c7;
-  --chart-3: #2a8fa3;
-  --chart-4: #1a6b7f;
-  --chart-5: #0f4c5c;
-  --sidebar: #0f4c5c;
-  --sidebar-foreground: #e6f6ff;
-  --sidebar-accent: #1a6b7f;
-  --sidebar-accent-foreground: #d5ecf8;
-  --sidebar-border: #1a6b7f;
-  --sidebar-ring: #9acee1;
+  --primary: #ffffff;
+  --primary-foreground: #0f172a;
+  --background: #0f172a; /* Charcoal */
+  --foreground: #f8fafc;
+  --card: #1e293b;
+  --card-foreground: #f8fafc;
+  --popover: #1e293b;
+  --popover-foreground: #f8fafc;
+  --secondary: #334155;
+  --secondary-foreground: #f8fafc;
+  --muted: #334155;
+  --muted-foreground: #94a3b8;
+  --accent: #334155;
+  --accent-foreground: #f8fafc;
+  --destructive: #7f1d1d;
+  --destructive-foreground: #f8fafc;
+  --border: #334155;
+  --input: #334155;
+  --ring: #cbd5e1;
+  --sidebar: #0f172a;
+  --sidebar-foreground: #f8fafc;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #0f172a;
+  --sidebar-accent: #334155;
+  --sidebar-accent-foreground: #f8fafc;
+  --sidebar-border: #334155;
+  --sidebar-ring: #f8fafc;
 }
 
 @layer base {
@@ -196,15 +182,14 @@
       max-width: 1280px;
     }
   }
-  
   /* Architectural Ledger: Premium Button Styles */
   .btn-primary {
-    @apply px-6 py-3 rounded-md font-medium text-white transition-all duration-200;
-    background: linear-gradient(135deg, #003441 0%, #0f4c5c 100%);
+    @apply px-4 py-2 text-sm font-medium text-white transition-all duration-200 rounded-md;
+    background-color: var(--primary);
   }
   
   .btn-primary:hover {
-    @apply shadow-lg;
+    opacity: 0.9;
   }
   
   .btn-primary:disabled {
@@ -212,31 +197,60 @@
   }
   
   .btn-tertiary {
-    @apply px-4 py-2 font-medium transition-all duration-200;
-    color: #003441;
+    @apply px-4 py-2 text-sm font-medium transition-all duration-200 rounded-md;
+    color: var(--foreground);
     background-color: transparent;
   }
   
   .btn-tertiary:hover {
-    background-color: #e6f6ff;
+    background-color: var(--secondary);
   }
   
-  /* Architectural Ledger: Card with Tonal Layering */
+  /* Architectural Ledger: Clean Sharp Cards */
   .card-elevated {
-    @apply rounded-xl shadow-sm hover:shadow-md;
-    background-color: #ffffff;
+    @apply rounded-xl bg-card border border-border;
+    /* Precise, sharp shadow if needed. Otherwise rely on borders. */
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
   }
   
-  /* Architectural Ledger: Ghost Border for Focus States */
+  /* Architectural Ledger: Simple minimal inputs */
   .input-field {
-    @apply rounded-md px-4 py-2 transition-all duration-200;
-    background-color: #ffffff;
-    color: #071e27;
-    border-bottom: 2px solid transparent;
+    @apply rounded-md px-3 py-2 text-sm transition-all duration-200 border border-border bg-transparent;
+    color: var(--foreground);
   }
   
   .input-field:focus {
-    @apply outline-none;
-    border-bottom-color: #306576;
+    @apply outline-none ring-1 ring-ring border-transparent;
+  }
+}
+
+@layer utilities {
+  .animate-fade-in-up {
+    animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  .delay-100 { animation-delay: 100ms; }
+  .delay-200 { animation-delay: 200ms; }
+  .delay-300 { animation-delay: 300ms; }
+  .delay-400 { animation-delay: 400ms; }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
   }
 }

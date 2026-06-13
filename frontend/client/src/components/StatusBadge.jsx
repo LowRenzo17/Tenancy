@@ -6,66 +6,41 @@
  * - Semantic color mapping for rental/maintenance statuses
  */
 export default function StatusBadge({ status, className = '' }) {
-  const statusStyles = {
-    // Occupancy Status
-    occupied: {
-      backgroundColor: 'rgba(15, 76, 92, 0.1)',
-      color: '#0f4c5c',
-      fontWeight: '500',
-    },
-    vacant: {
-      backgroundColor: 'rgba(199, 221, 233, 0.2)',
-      color: '#40484b',
-      fontWeight: '500',
-    },
-    
-    // Rent Status
-    paid: {
-      backgroundColor: '#dcfce7',
-      color: '#166534',
-      fontWeight: '500',
-    },
-    pending: {
-      backgroundColor: '#fef3c7',
-      color: '#92400e',
-      fontWeight: '500',
-    },
-    overdue: {
-      backgroundColor: '#ffdad6',
-      color: '#ba1a1a',
-      fontWeight: '500',
-    },
-    
-    // Maintenance Status
-    'In Progress': {
-      backgroundColor: '#dbeafe',
-      color: '#1e40af',
-      fontWeight: '500',
-    },
-    'Pending': {
-      backgroundColor: '#fef3c7',
-      color: '#92400e',
-      fontWeight: '500',
-    },
-    'Completed': {
-      backgroundColor: '#dcfce7',
-      color: '#166534',
-      fontWeight: '500',
-    },
+  const getStatusClasses = (status) => {
+    switch (status) {
+      // Occupancy Status
+      case 'occupied':
+        return 'bg-primary/10 text-primary border-primary/20';
+      case 'vacant':
+        return 'bg-secondary text-muted-foreground border-border';
+      
+      // Rent / Maintenance Status
+      case 'paid':
+      case 'completed':
+        return 'bg-green-500/10 text-green-600 border-green-500/20';
+      case 'pending':
+        return 'bg-amber-500/10 text-amber-600 border-amber-500/20';
+      case 'overdue':
+      case 'cancelled':
+        return 'bg-destructive/10 text-destructive border-destructive/20';
+      case 'in-progress':
+        return 'bg-blue-500/10 text-blue-600 border-blue-500/20';
+      
+      default:
+        return 'bg-secondary text-muted-foreground border-border';
+    }
   };
 
-  const style = statusStyles[status] || {
-    backgroundColor: 'rgba(199, 221, 233, 0.2)',
-    color: '#40484b',
-    fontWeight: '500',
+  const formatStatus = (s) => {
+    if (!s) return '';
+    return s.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
   };
 
   return (
     <span
-      className={`inline-block px-3 py-1 rounded-full text-xs ${className}`}
-      style={style}
+      className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest border ${getStatusClasses(status)} ${className}`}
     >
-      {status}
+      {formatStatus(status)}
     </span>
   );
 }
