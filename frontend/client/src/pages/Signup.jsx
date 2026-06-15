@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Building2, Users, Wallet, ShieldCheck } from 'lucide-react';
 import { useLocation } from 'wouter';
 import SEO from '../components/SEO';
+import { validatePasswordStrength } from '../lib/passwordResetUtils';
 
 /**
  * Signup Page Component
@@ -50,12 +51,11 @@ export default function Signup({ onSignup, onLoginClick }) {
       newErrors.email = 'Please enter a valid email';
     }
 
+    const strengthValidation = validatePasswordStrength(formData.password);
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if (formData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
-    } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).+$/.test(formData.password)) {
-      newErrors.password = 'Password must include uppercase, lowercase, number, and special symbol';
+    } else if (!strengthValidation.valid) {
+      newErrors.password = strengthValidation.errors[0];
     }
 
     return newErrors;

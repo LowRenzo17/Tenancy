@@ -6,6 +6,7 @@ import apiClient from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import SEO from '../components/SEO';
 import Card from '../components/Card';
+import { validatePasswordStrength } from '../lib/passwordResetUtils';
 
 export default function AcceptInvite({ token }) {
   const [, setLocation] = useLocation();
@@ -68,12 +69,11 @@ export default function AcceptInvite({ token }) {
 
   const validateForm = () => {
     const errors = {};
+    const strengthValidation = validatePasswordStrength(formData.password);
     if (!formData.password) {
       errors.password = 'Password is required';
-    } else if (formData.password.length < 8) {
-      errors.password = 'Password must be at least 8 characters';
-    } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).+$/.test(formData.password)) {
-      errors.password = 'Password must include uppercase, lowercase, number, and special character';
+    } else if (!strengthValidation.valid) {
+      errors.password = strengthValidation.errors[0];
     }
 
     if (formData.password !== formData.confirmPassword) {
