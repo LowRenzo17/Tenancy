@@ -77,7 +77,7 @@ export default function EditableTenantItem({ tenant, properties, onUpdate, onDel
     return (
       <Card variant="elevated" className={`p-6 border ${idx % 2 === 0 ? 'bg-card' : 'bg-secondary/30'}`}>
         <div className="space-y-5">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                 Tenant Full Name
@@ -103,7 +103,7 @@ export default function EditableTenantItem({ tenant, properties, onUpdate, onDel
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                 Property
@@ -135,7 +135,7 @@ export default function EditableTenantItem({ tenant, properties, onUpdate, onDel
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                 Lease Start
@@ -161,7 +161,7 @@ export default function EditableTenantItem({ tenant, properties, onUpdate, onDel
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                 Monthly Rent (KSh)
@@ -217,7 +217,7 @@ export default function EditableTenantItem({ tenant, properties, onUpdate, onDel
   }
 
   return (
-    <Card variant="elevated" className={`p-5 transition-all ${idx % 2 === 0 ? 'bg-card' : 'bg-secondary/30'}`}>
+    <Card variant="elevated" className={`group p-5 transition-all ${idx % 2 === 0 ? 'bg-card' : 'bg-secondary/30'}`}>
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
         <div className="flex-1 space-y-1">
           <div className="flex items-center gap-3 mb-1">
@@ -256,7 +256,7 @@ export default function EditableTenantItem({ tenant, properties, onUpdate, onDel
           </div>
         </div>
         
-        <div className="flex items-center gap-2 pt-2 md:pt-0 border-t border-border mt-4 md:mt-0 md:border-0 md:pl-4 opacity-0 lg:opacity-100 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+        <div className="flex items-center gap-2 pt-2 md:pt-0 border-t border-border mt-4 md:mt-0 md:border-0 md:pl-4 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
           <button
             onClick={() => setIsEditing(true)}
             className="p-2 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"

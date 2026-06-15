@@ -75,7 +75,7 @@ export default function ConversationList({ onSelectConversation }) {
               <div
                 key={conversation._id}
                 onClick={() => handleSelectConversation(conversation)}
-                className={`px-4 py-3 border-b border-border cursor-pointer transition-colors ${
+                className={`group px-4 py-3 border-b border-border cursor-pointer transition-colors ${
                   isSelected ? 'bg-primary/5 border-l-2 border-l-primary' : 'hover:bg-secondary/40'
                 }`}
               >
@@ -110,7 +110,7 @@ export default function ConversationList({ onSelectConversation }) {
                   </div>
                   <button
                     onClick={e => handleArchive(e, conversation._id)}
-                    className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary rounded transition-colors shrink-0 mt-0.5 opacity-0 group-hover:opacity-100"
+                    className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary rounded transition-colors shrink-0 mt-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100"
                     title="Archive conversation"
                   >
                     <Archive className="w-3.5 h-3.5" />

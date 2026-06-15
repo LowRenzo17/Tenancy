@@ -114,7 +114,7 @@ export default function Tenants({ tenants, properties, onAddTenant, onDeleteTena
               <p className="text-sm text-muted-foreground">Please configure a property before adding residents.</p>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-5">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="block text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                       Full Name
@@ -144,7 +144,7 @@ export default function Tenants({ tenants, properties, onAddTenant, onDeleteTena
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="block text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                       Estate
@@ -177,7 +177,7 @@ export default function Tenants({ tenants, properties, onAddTenant, onDeleteTena
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="block text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                       Lease Term Start
@@ -206,7 +206,7 @@ export default function Tenants({ tenants, properties, onAddTenant, onDeleteTena
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="block text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                       Monthly Yield (KSh)

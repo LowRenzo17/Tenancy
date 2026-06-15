@@ -214,7 +214,7 @@ export default function TwoFactorAuth({ onVerify, onSkip, email, onTrustDevice }
                   </p>
                 </div>
 
-                <div className="p-6 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-2 gap-4">
+                <div className="p-6 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {backupCodes.map((code, index) => (
                     <div
                       key={index}
