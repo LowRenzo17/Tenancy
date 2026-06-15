@@ -97,8 +97,10 @@ class ApiClient {
         if (response.status === 401) {
           this.handleUnauthorized();
         }
-        const message = data?.message || `HTTP ${response.status}`;
-        throw new Error(message);
+        const errorMessage = data?.message
+          || (Array.isArray(data?.errors) ? data.errors.map((err) => err.msg).join(' ') : null)
+          || `HTTP ${response.status}`;
+        throw new Error(errorMessage);
       }
 
       return data;
