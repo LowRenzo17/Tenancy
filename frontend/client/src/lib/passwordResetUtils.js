@@ -170,8 +170,8 @@ export function validatePasswordStrength(password) {
   if (!/[0-9]/.test(password)) {
     errors.push('Password must contain at least one number');
   }
-  if (!/[!@#$%^&*]/.test(password)) {
-    errors.push('Password must contain at least one special character (!@#$%^&*)');
+  if (!/[\W_]/.test(password)) {
+    errors.push('Password must contain at least one special character');
   }
 
   return {
@@ -190,7 +190,7 @@ export function calculatePasswordStrength(password) {
   if (/[a-z]/.test(password)) strength += 15;
   if (/[A-Z]/.test(password)) strength += 15;
   if (/[0-9]/.test(password)) strength += 15;
-  if (/[!@#$%^&*]/.test(password)) strength += 25;
+  if (/[\W_]/.test(password)) strength += 25;
 
   return Math.min(strength, 100);
 }

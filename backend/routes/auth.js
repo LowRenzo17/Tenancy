@@ -37,7 +37,12 @@ router.post(
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() });
+      const extractedErrors = errors.array();
+      return res.status(400).json({
+        success: false,
+        message: extractedErrors[0]?.msg || 'Invalid request',
+        errors: extractedErrors,
+      });
     }
 
     try {
@@ -201,7 +206,12 @@ router.post(
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() });
+      const extractedErrors = errors.array();
+      return res.status(400).json({
+        success: false,
+        message: extractedErrors[0]?.msg || 'Invalid request',
+        errors: extractedErrors,
+      });
     }
 
     const { tempToken, newPassword } = req.body;
