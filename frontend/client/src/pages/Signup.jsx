@@ -43,9 +43,10 @@ export default function Signup({ onSignup, onLoginClick }) {
       newErrors.fullName = 'Full name is required';
     }
 
-    if (!formData.email.trim()) {
+    const trimmedEmail = formData.email.trim();
+    if (!trimmedEmail) {
       newErrors.email = 'Email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
       newErrors.email = 'Please enter a valid email';
     }
 
@@ -53,6 +54,8 @@ export default function Signup({ onSignup, onLoginClick }) {
       newErrors.password = 'Password is required';
     } else if (formData.password.length < 8) {
       newErrors.password = 'Password must be at least 8 characters';
+    } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).+$/.test(formData.password)) {
+      newErrors.password = 'Password must include uppercase, lowercase, number, and special symbol';
     }
 
     return newErrors;
@@ -72,8 +75,8 @@ export default function Signup({ onSignup, onLoginClick }) {
 
     try {
       await onSignup?.(
-        formData.fullName,
-        formData.email,
+        formData.fullName.trim(),
+        formData.email.trim(),
         formData.password,
         formData.accountType,
       );
