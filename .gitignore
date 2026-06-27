@@ -18,8 +18,19 @@ build/
 .env.production
 .env.production.local
 backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
 frontend/client/.env
 frontend/client/.env.*
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+!frontend/client/.env.example
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+!frontend/client/.env.example
 
 # ── IDE and editor ────────────────────────────────────────────────────────────
 .vscode/

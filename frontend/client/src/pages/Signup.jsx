@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Building2, Users, Wallet, ShieldCheck } from 'lucide-react';
+import { useGoogleLogin } from '@react-oauth/google';
 import { useLocation } from 'wouter';
 import SEO from '../components/SEO';
 import { validatePasswordStrength } from '../lib/passwordResetUtils';
@@ -10,7 +11,7 @@ import { validatePasswordStrength } from '../lib/passwordResetUtils';
  * - Professional signup form with account type selection
  * - Property Owner vs Tenant account types
  */
-export default function Signup({ onSignup, onLoginClick }) {
+export default function Signup({ onSignup, onGoogleSignup, onLoginClick }) {
   const [, setLocation] = useLocation();
   const [formData, setFormData] = useState({
     fullName: '',
@@ -89,6 +90,30 @@ export default function Signup({ onSignup, onLoginClick }) {
       setIsLoading(false);
     }
   };
+
+  const startGoogleSignup = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      setIsLoading(true);
+      setErrors({});
+
+      try {
+        await onGoogleSignup?.(tokenResponse.access_token, formData.accountType);
+      } catch (err) {
+        setErrors((prev) => ({
+          ...prev,
+          submit: err?.message || 'Google signup failed. Please try again.',
+        }));
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    onError: () => {
+      setErrors((prev) => ({
+        ...prev,
+        submit: 'Google signup was incomplete.',
+      }));
+    },
+  });
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
@@ -326,6 +351,31 @@ export default function Signup({ onSignup, onLoginClick }) {
                 {isLoading ? 'Creating Account...' : 'Create Account'}
               </button>
             </div>
+
+            {/* Divider */}
+            <div className="relative py-2">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-border" />
+              </div>
+              <div className="relative flex justify-center text-[11px]">
+                <span className="px-2 bg-background text-muted-foreground uppercase tracking-wider">
+                  Or continue with
+                </span>
+              </div>
+            </div>
+
+            {/* Google Signup */}
+            <button
+              type="button"
+              onClick={() => startGoogleSignup()}
+              disabled={isLoading}
+              className="w-full flex items-center justify-center gap-2 rounded-md bg-card border border-border px-3 py-2.5 text-[13px] font-medium transition-colors hover:bg-secondary text-foreground shadow-sm shadow-black/[0.02] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12.48 10.92v3.28h7.84c-.24 1.84-.909 3.154-1.908 4.154-1.286 1.286-3.303 2.693-7.84 2.693-7.07 0-12.87-5.715-12.87-12.786 0-7.071 5.8-12.786 12.87-12.786 3.411 0 6.146 1.337 8.01 3.132l2.21-2.21C18.173 1.08 15.601 0 12.48 0 5.58 0 0 5.58 0 12.5s5.58 12.5 12.5 12.5c3.75 0 6.58-1.25 8.75-3.5 2.25-2.25 2.9-5.4 2.9-8 0-.6-.05-1.2-.15-1.75h-8.52Z" />
+              </svg>
+              {isLoading ? 'Connecting...' : 'Sign up with Google'}
+            </button>
 
             {/* Login Link */}
             <p className="text-center text-xs text-muted-foreground">

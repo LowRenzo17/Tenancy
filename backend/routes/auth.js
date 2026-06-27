@@ -263,6 +263,10 @@ router.post('/google', sensitiveAuthLimiter, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Token is required' });
     }
 
+    if (accountType && !['owner', 'tenant'].includes(accountType)) {
+      return res.status(400).json({ success: false, message: 'Account type must be owner or tenant' });
+    }
+
     // Fetch user profile from Google using the access token
     const googleResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: { Authorization: `Bearer ${token}` },
@@ -273,29 +277,42 @@ router.post('/google', sensitiveAuthLimiter, async (req, res) => {
     }
 
     const profile = await googleResponse.json();
-    const { email, name } = profile;
+    const { email, email_verified: emailVerified, name, sub: googleId } = profile;
 
     if (!email) {
       return res.status(400).json({ success: false, message: 'Email not provided by Google' });
     }
 
+    if (emailVerified !== true && emailVerified !== 'true') {
+      return res.status(401).json({ success: false, message: 'Please verify your Google email before continuing' });
+    }
+
+    if (!googleId) {
+      return res.status(401).json({ success: false, message: 'Google account identifier missing' });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
     // Check if user exists
-    let user = await User.findOne({ email: email.toLowerCase() });
+    let user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
       // Create new user (Generate a random secure password for Google users)
       const randomPassword = crypto.randomBytes(16).toString('base64') + 'A1!';
       user = new User({
         fullName: name,
-        email,
+        email: normalizedEmail,
         password: randomPassword,
         accountType: accountType || 'tenant', // Default to tenant if not specified
+        authProvider: 'google',
+        googleId,
+        googleEmailVerified: true,
       });
       await user.save();
 
       // Check if user is a tenant and link to Tenant document
       if (user.accountType === 'tenant') {
-        const tenantRecord = await Tenant.findOne({ email: email.toLowerCase() });
+        const tenantRecord = await Tenant.findOne({ email: normalizedEmail });
         if (tenantRecord) {
           tenantRecord.userId = user._id;
           await tenantRecord.save();
@@ -309,6 +326,13 @@ router.post('/google', sensitiveAuthLimiter, async (req, res) => {
           message: `Access denied. Please log in as ${user.accountType === 'owner' ? 'an Owner' : 'a Tenant'}.` 
         });
       }
+
+      if (user.googleId && user.googleId !== googleId) {
+        return res.status(403).json({ success: false, message: 'This email is linked to a different Google account' });
+      }
+
+      user.googleId = user.googleId || googleId;
+      user.googleEmailVerified = true;
     }
 
     // Check if 2FA is enabled

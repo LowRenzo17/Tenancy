@@ -178,6 +178,7 @@ function AppRouter() {
           {() => (
             <Signup
               onSignup={handleSignup}
+              onGoogleSignup={handleGoogleLogin}
               onLoginClick={() => navigate('/login')}
             />
           )}
@@ -318,7 +319,15 @@ import { HelmetProvider } from 'react-helmet-async';
  * Wraps the app with context providers
  */
 export default function App() {
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '1234567890-mock.apps.googleusercontent.com';
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+  if (!googleClientId) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-6 text-center text-foreground">
+        Google sign-in is not configured. Set VITE_GOOGLE_CLIENT_ID to enable authentication.
+      </div>
+    );
+  }
 
   return (
     <GoogleOAuthProvider clientId={googleClientId}>
