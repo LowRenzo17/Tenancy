@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Bell, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { toast } from 'sonner';
 import Card from '../components/Card';
-import StatusBadge from '../components/StatusBadge';
+import { useData } from '../contexts/DataContext';
 
 /**
  * Reminders Page
@@ -10,7 +11,8 @@ import StatusBadge from '../components/StatusBadge';
  * - Alert system for overdue payments and upcoming due dates
  */
 export default function Reminders({ tenants, properties }) {
-  const [reminders, setReminders] = useState([]);
+  const { sendRentReminder } = useData();
+  const [sendingReminderId, setSendingReminderId] = useState(null);
   const [dismissedReminders, setDismissedReminders] = useState(new Set());
 
   // Generate reminders based on tenant data
@@ -18,13 +20,15 @@ export default function Reminders({ tenants, properties }) {
     const newReminders = [];
 
     tenants.forEach(tenant => {
-      const property = properties.find(p => p.id === parseInt(tenant.propertyId));
+      const assignedPropertyId = tenant.assignedProperty?._id || tenant.assignedProperty || tenant.propertyId;
+      const property = properties.find(p => String(p.id || p._id) === String(assignedPropertyId));
       const propertyName = property?.name || 'Unknown Property';
 
       // Overdue reminders (highest priority)
       if (tenant.rentStatus === 'overdue') {
         newReminders.push({
           id: `overdue-${tenant.id}`,
+          tenantId: tenant.id || tenant._id,
           type: 'overdue',
           priority: 'high',
           title: 'Overdue Rent Payment',
@@ -40,6 +44,7 @@ export default function Reminders({ tenants, properties }) {
       if (tenant.rentStatus === 'pending') {
         newReminders.push({
           id: `pending-${tenant.id}`,
+          tenantId: tenant.id || tenant._id,
           type: 'pending',
           priority: 'medium',
           title: 'Pending Rent Payment',
@@ -55,6 +60,7 @@ export default function Reminders({ tenants, properties }) {
       if (tenant.rentStatus === 'paid') {
         newReminders.push({
           id: `paid-${tenant.id}`,
+          tenantId: tenant.id || tenant._id,
           type: 'paid',
           priority: 'low',
           title: 'Rent Payment Received',
@@ -79,6 +85,23 @@ export default function Reminders({ tenants, properties }) {
   const handleDismissAll = () => {
     const allIds = new Set(generateReminders().map(r => r.id));
     setDismissedReminders(allIds);
+  };
+
+  const handleSendReminder = async (reminder) => {
+    try {
+      setSendingReminderId(reminder.id);
+      const response = await sendRentReminder(reminder.tenantId);
+
+      if (response.success) {
+        toast.success(`Rent reminder sent to ${reminder.tenant}`);
+      } else {
+        toast.error(response.message || 'Rent reminder could not be sent');
+      }
+    } catch (err) {
+      toast.error(err.message || 'Rent reminder could not be sent');
+    } finally {
+      setSendingReminderId(null);
+    }
   };
 
   // Count reminders by type
@@ -217,7 +240,16 @@ export default function Reminders({ tenants, properties }) {
                             </div>
                           </div>
                           <div className="flex flex-col items-end shrink-0 gap-2">
-                             <button
+                            {(reminder.type === 'pending' || reminder.type === 'overdue') && (
+                              <button
+                                onClick={() => handleSendReminder(reminder)}
+                                disabled={sendingReminderId === reminder.id}
+                                className="px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-60 disabled:cursor-wait"
+                              >
+                                {sendingReminderId === reminder.id ? 'Sending...' : 'Send Email'}
+                              </button>
+                            )}
+                            <button
                               onClick={() => handleDismiss(reminder.id)}
                               className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${colors.bg} ${colors.text} border border-transparent hover:border-border`}
                             >

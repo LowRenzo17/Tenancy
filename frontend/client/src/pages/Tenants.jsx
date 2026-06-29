@@ -40,15 +40,25 @@ export default function Tenants({ tenants, properties, onAddTenant, onDeleteTena
       return;
     }
     try {
-      await onAddTenant({
+      const createdTenant = await onAddTenant({
         ...formData,
         monthlyRent: parseFloat(formData.monthlyRent),
       });
-      toast.success(
-        formData.useInviteLink 
-          ? `Invitation email queued for "${formData.fullName}"`
-          : `Resident "${formData.fullName}" registered successfully`
-      );
+
+      if (createdTenant?.emailDelivery?.attempted) {
+        if (createdTenant.emailDelivery.sent) {
+          toast.success(
+            createdTenant.emailDelivery.type === 'invite'
+              ? `Invitation email sent to ${formData.email}`
+              : `Onboarding email sent to ${formData.email}`
+          );
+        } else {
+          toast.warning(`Resident saved, but the email could not be sent to ${formData.email}`);
+        }
+      } else {
+        toast.success(`Resident "${formData.fullName}" registered successfully`);
+      }
+
       setFormData({
         fullName: '',
         email: '',
@@ -61,8 +71,8 @@ export default function Tenants({ tenants, properties, onAddTenant, onDeleteTena
         useInviteLink: true,
       });
       setShowForm(false);
-    } catch {
-      toast.error('Failed to register resident. Please try again.');
+    } catch (err) {
+      toast.error(err.message || 'Failed to register resident. Please try again.');
     }
   };
 

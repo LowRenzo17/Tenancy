@@ -5,7 +5,7 @@ import Tenant from '../models/Tenant.js';
 import Property from '../models/Property.js';
 import User from '../models/User.js';
 import { protect, authorize } from '../middleware/auth.js';
-import { sendTenantOnboardingEmail, sendTenantInviteEmail } from '../utils/emailUtils.js';
+import { sendRentReminderEmail, sendTenantOnboardingEmail, sendTenantInviteEmail } from '../utils/emailUtils.js';
 import { generateToken } from '../utils/tokenUtils.js';
 
 const router = express.Router();
@@ -176,6 +176,11 @@ router.post(
       let inviteToken = null;
       let inviteExpiresAt = null;
       let inviteStatus = 'none';
+      let emailDelivery = {
+        attempted: false,
+        type: 'none',
+        sent: false,
+      };
       const useInviteLink = req.body.useInviteLink === true;
 
       if (existingUser) {
@@ -201,16 +206,6 @@ router.post(
             requiresPasswordChange: true
           });
           await existingUser.save();
-          
-          // Dispatch onboarding email asynchronously
-          sendTenantOnboardingEmail(email, generatedPassword, fullName)
-            .then(success => {
-              if (success) console.log(`[SUCCESS] Onboarding email sent to ${email}`);
-              else console.error(`[ERROR] Failed to send onboarding email to ${email}`);
-            })
-            .catch(err => {
-              console.error("[ERROR] Critical failure inside email dispatcher:", err);
-            });
         }
       }
 
@@ -237,16 +232,25 @@ router.post(
 
       await tenant.save();
 
-      // Dispatch invite email asynchronously if token is generated
+      // Send onboarding or invite email and report the result to the client.
       if (inviteToken) {
-        sendTenantInviteEmail(email, inviteToken, fullName, property.name, unitNumber, req.user.fullName)
-          .then(success => {
-            if (success) console.log(`[SUCCESS] Invite email sent to ${email}`);
-            else console.error(`[ERROR] Failed to send invite email to ${email}`);
-          })
-          .catch(err => {
-            console.error("[ERROR] Critical failure inside email dispatcher:", err);
-          });
+        emailDelivery = {
+          attempted: true,
+          type: 'invite',
+          sent: await sendTenantInviteEmail(email, inviteToken, fullName, property.name, unitNumber, req.user.fullName),
+        };
+      } else if (generatedPassword) {
+        emailDelivery = {
+          attempted: true,
+          type: 'onboarding',
+          sent: await sendTenantOnboardingEmail(email, generatedPassword, fullName),
+        };
+      }
+
+      if (emailDelivery.attempted && emailDelivery.sent) {
+        console.log(`[SUCCESS] ${emailDelivery.type} email sent to ${email}`);
+      } else if (emailDelivery.attempted) {
+        console.error(`[ERROR] Failed to send ${emailDelivery.type} email to ${email}`);
       }
 
       // Update property with current tenant
@@ -266,6 +270,7 @@ router.post(
       res.status(201).json({
         success: true,
         tenant,
+        emailDelivery,
       });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -459,6 +464,81 @@ router.put('/:id/rent-status', protect, authorize('owner'), async (req, res) => 
     res.status(500).json({ success: false, message: 'Server Error' });
   }
 });
+
+// @route   POST /api/tenants/:id/send-rent-reminder
+// @desc    Send rent reminder email to a tenant
+// @access  Private (Owner only)
+router.post(
+  '/:id/send-rent-reminder',
+  protect,
+  authorize('owner'),
+  [
+    body('dueDate').optional().isISO8601().withMessage('Due date must be a valid date'),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    try {
+      const tenant = await Tenant.findById(req.params.id);
+
+      if (!tenant) {
+        return res.status(404).json({ success: false, message: 'Tenant not found' });
+      }
+
+      if (tenant.ownerId.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ success: false, message: 'Not authorized' });
+      }
+
+      if (!tenant.email) {
+        return res.status(400).json({ success: false, message: 'Tenant email is missing' });
+      }
+
+      const dueDate = req.body.dueDate ? new Date(req.body.dueDate) : new Date();
+      if (!req.body.dueDate) {
+        dueDate.setMonth(dueDate.getMonth() + 1, 1);
+        dueDate.setHours(0, 0, 0, 0);
+      }
+
+      const emailSent = await sendRentReminderEmail(
+        tenant.email,
+        tenant.fullName,
+        tenant.monthlyRent,
+        dueDate
+      );
+
+      if (!emailSent) {
+        return res.status(502).json({
+          success: false,
+          message: 'Rent reminder could not be sent. Check SMTP configuration and server logs.',
+        });
+      }
+
+      const io = req.app.get('io');
+      if (io && tenant.userId) {
+        io.to(`user-${tenant.userId}`).emit('rent-reminder-received', {
+          tenantId: tenant._id,
+          dueDate,
+          amount: tenant.monthlyRent,
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Rent reminder sent',
+        emailDelivery: {
+          attempted: true,
+          type: 'rent-reminder',
+          sent: true,
+        },
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+);
 
 // @route   GET /api/tenants/invite/validate/:token
 // @desc    Validate tenant invitation link

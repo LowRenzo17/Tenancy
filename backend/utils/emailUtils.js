@@ -2,24 +2,62 @@ import nodemailer from 'nodemailer';
 
 let transporter;
 
+const getSmtpConfig = () => {
+  const port = Number(process.env.SMTP_PORT || 587);
+
+  return {
+    host: process.env.SMTP_HOST?.trim() || 'smtp.gmail.com',
+    port,
+    secure: port === 465,
+    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 10000),
+    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 10000),
+    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 20000),
+    auth: {
+      user: process.env.SMTP_USER?.trim(),
+      pass: process.env.SMTP_PASSWORD?.trim(),
+    },
+  };
+};
+
+const getFrontendUrl = () => {
+  const configuredUrl = process.env.FRONTEND_URL?.trim();
+
+  if (!configuredUrl && process.env.NODE_ENV === 'production') {
+    throw new Error('FRONTEND_URL must be configured in production before sending email links');
+  }
+
+  const frontendUrl = configuredUrl || 'http://localhost:3000';
+
+  try {
+    return new URL(frontendUrl).origin;
+  } catch (_error) {
+    throw new Error(`FRONTEND_URL is not a valid URL: ${frontendUrl}`);
+  }
+};
+
 const getTransporter = () => {
   if (!transporter) {
+    const smtpConfig = getSmtpConfig();
+
+    if (!smtpConfig.auth.user || !smtpConfig.auth.pass) {
+      throw new Error('SMTP_USER and SMTP_PASSWORD must be configured before sending email');
+    }
+
     transporter = nodemailer.createTransport({
       pool: true,
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: process.env.SMTP_PORT || 587,
-      secure: false,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASSWORD,
-      },
+      ...smtpConfig,
     });
   }
   return transporter;
 };
 
+export const verifyEmailTransport = async () => {
+  await getTransporter().verify();
+  return true;
+};
+
 export const sendPasswordResetEmail = async (email, resetToken) => {
-  const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+  const resetUrl = `${getFrontendUrl()}/reset-password?token=${resetToken}`;
 
   const mailOptions = {
     from: `"${process.env.SMTP_FROM_NAME || 'Tenancy Slate'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
@@ -304,7 +342,7 @@ export const sendMaintenanceNotificationEmail = async (email, maintenanceTitle, 
 };
 
 export const sendTenantOnboardingEmail = async (email, tempPassword, tenantName) => {
-  const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`;
+  const loginUrl = `${getFrontendUrl()}/login`;
 
   const mailOptions = {
     from: `"${process.env.SMTP_FROM_NAME || 'Tenancy Slate'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
@@ -390,7 +428,7 @@ export const sendTenantOnboardingEmail = async (email, tempPassword, tenantName)
 };
 
 export const sendTenantInviteEmail = async (email, inviteToken, tenantName, propertyName, unitNumber, ownerName) => {
-  const inviteUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/invite/accept?token=${inviteToken}`;
+  const inviteUrl = `${getFrontendUrl()}/invite/accept?token=${inviteToken}`;
 
   const mailOptions = {
     from: `"${process.env.SMTP_FROM_NAME || 'Tenancy Slate'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,

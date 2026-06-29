@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import http from 'http';
 import connectDB from './config/database.js';
 import errorHandler from './middleware/errorHandler.js';
+import { verifyEmailTransport } from './utils/emailUtils.js';
 import { initializeSocket } from './utils/socketHandler.js';
 import helmet from 'helmet';
 import mongoSanitize from 'express-mongo-sanitize';
@@ -91,4 +92,10 @@ const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Socket.io server initialized`);
+
+  verifyEmailTransport()
+    .then(() => console.log('Email transport verified'))
+    .catch((error) => {
+      console.error('Email transport verification failed:', error.message);
+    });
 });
