@@ -230,6 +230,7 @@ export const DataProvider = ({ children }) => {
           id: t._id || t.id,
           name: t.fullName || t.name,
           rentAmount: t.monthlyRent || t.rentAmount || 0,
+          emailDelivery: response.emailDelivery,
         };
         setTenants([...tenants, normalized]);
         
@@ -269,6 +270,15 @@ export const DataProvider = ({ children }) => {
       }
     } catch (err) {
       console.error('Error updating tenant:', err);
+      throw err;
+    }
+  };
+
+  const sendRentReminder = async (id, data = {}) => {
+    try {
+      return await apiClient.sendRentReminder(id, data);
+    } catch (err) {
+      console.error('Error sending rent reminder:', err);
       throw err;
     }
   };
@@ -583,6 +593,7 @@ export const DataProvider = ({ children }) => {
     fetchTenants,
     createTenant,
     updateTenant,
+    sendRentReminder,
     deleteTenant,
     myTenantProfile,
     myTenantProfileLoading,

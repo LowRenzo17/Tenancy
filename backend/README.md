@@ -261,6 +261,8 @@ The backend sends email notifications for:
 
 Configure SMTP settings in `.env` to enable email functionality.
 
+For production, `FRONTEND_URL` must be set to the public HTTPS frontend URL. Email links fail fast when this is missing or invalid so tenants do not receive broken localhost invitation/reset links.
+
 ## Development
 
 ### Running Tests

@@ -276,6 +276,10 @@ class ApiClient {
     return this.put(`/tenants/${id}/rent-status`, { rentStatus });
   }
 
+  sendRentReminder(id, data = {}) {
+    return this.post(`/tenants/${id}/send-rent-reminder`, data);
+  }
+
   validateInviteToken(token) {
     return this.get(`/tenants/invite/validate/${token}`);
   }
