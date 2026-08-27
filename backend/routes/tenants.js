@@ -2,10 +2,11 @@ import express from 'express';
 import crypto from 'crypto';
 import { body, validationResult } from 'express-validator';
 import Tenant from '../models/Tenant.js';
+import EmailDelivery from '../models/EmailDelivery.js';
 import Property from '../models/Property.js';
 import User from '../models/User.js';
 import { protect, authorize } from '../middleware/auth.js';
-import { sendRentReminderEmail, sendTenantOnboardingEmail, sendTenantInviteEmail } from '../utils/emailUtils.js';
+import { sendRentReminderEmail, sendTenantInviteEmail } from '../utils/emailUtils.js';
 import { generateToken } from '../utils/tokenUtils.js';
 
 const router = express.Router();
@@ -172,7 +173,6 @@ router.post(
       // Check if a user with this email already exists
       let existingUser = await User.findOne({ email: normalizedEmail });
       
-      let generatedPassword = null;
       let inviteToken = null;
       let inviteExpiresAt = null;
       let inviteStatus = 'none';
@@ -181,8 +181,6 @@ router.post(
         type: 'none',
         sent: false,
       };
-      const useInviteLink = req.body.useInviteLink === true;
-
       if (existingUser) {
         if (existingUser.accountType !== 'tenant') {
           return res.status(400).json({ success: false, message: 'Email is registered to a Property Owner account. Provide a new email.' });
@@ -190,23 +188,11 @@ router.post(
         console.log(`[INFO] Tenant ${email} already has a user account. Skipping onboarding invite flow.`);
         inviteStatus = 'accepted';
       } else {
-        if (useInviteLink) {
-          inviteToken = crypto.randomBytes(32).toString('hex');
-          inviteExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-          inviteStatus = 'pending';
-        } else {
-          // Cryptographically secure 16-char temp password
-          generatedPassword = crypto.randomBytes(12).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 12) + '!A1';
-          
-          existingUser = new User({
-            fullName,
-            email: normalizedEmail,
-            password: generatedPassword,
-            accountType: 'tenant',
-            requiresPasswordChange: true
-          });
-          await existingUser.save();
-        }
+        // Never send a password over email. The tenant sets a password through
+        // this short-lived, single-use invitation during account activation.
+        inviteToken = crypto.randomBytes(32).toString('hex');
+        inviteExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        inviteStatus = 'pending';
       }
 
       const tenant = new Tenant({
@@ -232,18 +218,12 @@ router.post(
 
       await tenant.save();
 
-      // Send onboarding or invite email and report the result to the client.
+      // Send the account-activation invitation and report the result to the client.
       if (inviteToken) {
         emailDelivery = {
           attempted: true,
           type: 'invite',
           sent: await sendTenantInviteEmail(email, inviteToken, fullName, property.name, unitNumber, req.user.fullName),
-        };
-      } else if (generatedPassword) {
-        emailDelivery = {
-          attempted: true,
-          type: 'onboarding',
-          sent: await sendTenantOnboardingEmail(email, generatedPassword, fullName),
         };
       }
 
@@ -502,6 +482,57 @@ router.post(
         dueDate.setHours(0, 0, 0, 0);
       }
 
+      const dueDateKey = dueDate.toISOString().slice(0, 10);
+      const deduplicationKey = `rent-reminder:${tenant._id}:${dueDateKey}`;
+      let delivery = await EmailDelivery.findOne({ deduplicationKey });
+
+      if (delivery?.status === 'sent') {
+        return res.status(409).json({
+          success: false,
+          message: 'A rent reminder for this due date has already been sent.',
+        });
+      }
+
+      if (delivery?.status === 'processing') {
+        return res.status(409).json({
+          success: false,
+          message: 'A rent reminder is already being sent. Please wait before trying again.',
+        });
+      }
+
+      if (delivery) {
+        delivery = await EmailDelivery.findOneAndUpdate(
+          { _id: delivery._id, status: 'failed' },
+          { $set: { status: 'processing', lastError: null }, $inc: { sendAttempts: 1 } },
+          { new: true }
+        );
+
+        if (!delivery) {
+          return res.status(409).json({
+            success: false,
+            message: 'A rent reminder is already being sent. Please wait before trying again.',
+          });
+        }
+      } else {
+        try {
+          delivery = await EmailDelivery.create({
+            ownerId: req.user._id,
+            tenantId: tenant._id,
+            type: 'rent-reminder',
+            dueDate,
+            deduplicationKey,
+          });
+        } catch (error) {
+          if (error.code === 11000) {
+            return res.status(409).json({
+              success: false,
+              message: 'A rent reminder is already being sent or has already been sent for this due date.',
+            });
+          }
+          throw error;
+        }
+      }
+
       const emailSent = await sendRentReminderEmail(
         tenant.email,
         tenant.fullName,
@@ -510,11 +541,18 @@ router.post(
       );
 
       if (!emailSent) {
+        delivery.status = 'failed';
+        delivery.lastError = 'SMTP delivery was not accepted.';
+        await delivery.save();
         return res.status(502).json({
           success: false,
           message: 'Rent reminder could not be sent. Check SMTP configuration and server logs.',
         });
       }
+
+      delivery.status = 'sent';
+      delivery.sentAt = new Date();
+      await delivery.save();
 
       const io = req.app.get('io');
       if (io && tenant.userId) {
