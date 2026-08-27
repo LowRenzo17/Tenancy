@@ -2,6 +2,13 @@ import nodemailer from 'nodemailer';
 
 let transporter;
 
+const escapeHtml = (value) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 const getSmtpConfig = () => {
   const port = Number(process.env.SMTP_PORT || 587);
 
@@ -9,6 +16,7 @@ const getSmtpConfig = () => {
     host: process.env.SMTP_HOST?.trim() || 'smtp.gmail.com',
     port,
     secure: port === 465,
+    requireTLS: process.env.NODE_ENV === 'production',
     connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 10000),
     greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 10000),
     socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 20000),
@@ -29,7 +37,11 @@ const getFrontendUrl = () => {
   const frontendUrl = configuredUrl || 'http://localhost:3000';
 
   try {
-    return new URL(frontendUrl).origin;
+    const parsedUrl = new URL(frontendUrl);
+    if (process.env.NODE_ENV === 'production' && parsedUrl.protocol !== 'https:') {
+      throw new Error('FRONTEND_URL must use HTTPS in production');
+    }
+    return parsedUrl.origin;
   } catch (_error) {
     throw new Error(`FRONTEND_URL is not a valid URL: ${frontendUrl}`);
   }
@@ -194,6 +206,8 @@ export const sendRentReminderEmail = async (email, tenantName, amount, dueDate) 
   const isOverdue = daysUntilDue < 0;
   const statusColor = isOverdue ? '#ef4444' : (daysUntilDue <= 5 ? '#f59e0b' : '#10b981');
   const statusText = isOverdue ? 'OVERDUE' : (daysUntilDue <= 5 ? 'DUE SOON' : 'UPCOMING');
+  const safeTenantName = escapeHtml(tenantName);
+  const formattedAmount = Number(amount).toLocaleString('en-KE');
 
   const mailOptions = {
     from: `"${process.env.SMTP_FROM_NAME || 'Tenancy Slate'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
@@ -227,7 +241,7 @@ export const sendRentReminderEmail = async (email, tenantName, amount, dueDate) 
             <h1>Rent Payment Reminder</h1>
           </div>
           <div class="content">
-            <p>Hello <strong>${tenantName}</strong>,</p>
+            <p>Hello <strong>${safeTenantName}</strong>,</p>
             
             <div>
               <span class="status-badge">${statusText}</span>
@@ -238,7 +252,7 @@ export const sendRentReminderEmail = async (email, tenantName, amount, dueDate) 
             <div class="payment-details">
               <div class="payment-row">
                 <span class="label">Amount Due:</span>
-                <span class="amount">Ksh ${amount.toLocaleString()}</span>
+                <span class="amount">Ksh ${formattedAmount}</span>
               </div>
               <div class="payment-row">
                 <span class="label">Due Date:</span>
@@ -343,6 +357,7 @@ export const sendMaintenanceNotificationEmail = async (email, maintenanceTitle, 
 
 export const sendTenantOnboardingEmail = async (email, tempPassword, tenantName) => {
   const loginUrl = `${getFrontendUrl()}/login`;
+  const safeTenantName = escapeHtml(tenantName);
 
   const mailOptions = {
     from: `"${process.env.SMTP_FROM_NAME || 'Tenancy Slate'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
@@ -375,7 +390,7 @@ export const sendTenantOnboardingEmail = async (email, tempPassword, tenantName)
             <h1>Welcome to Tenancy Slate!</h1>
           </div>
           <div class="content">
-            <p>Hello <strong>${tenantName}</strong>,</p>
+            <p>Hello <strong>${safeTenantName}</strong>,</p>
             <p>Your property manager has invited you to join <strong>Tenancy Slate</strong>, a modern platform for managing rent, maintenance requests, and lease information seamlessly.</p>
             
             <h3 style="color: #003441; margin-top: 25px;">Getting Started</h3>
@@ -429,11 +444,15 @@ export const sendTenantOnboardingEmail = async (email, tempPassword, tenantName)
 
 export const sendTenantInviteEmail = async (email, inviteToken, tenantName, propertyName, unitNumber, ownerName) => {
   const inviteUrl = `${getFrontendUrl()}/invite/accept?token=${inviteToken}`;
+  const safeTenantName = escapeHtml(tenantName);
+  const safePropertyName = escapeHtml(propertyName);
+  const safeUnitNumber = escapeHtml(unitNumber || 'N/A');
+  const safeOwnerName = escapeHtml(ownerName || 'Your property manager');
 
   const mailOptions = {
     from: `"${process.env.SMTP_FROM_NAME || 'Tenancy Slate'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
     to: email,
-    subject: `Tenancy Invitation - ${propertyName} Unit ${unitNumber}`,
+    subject: `Tenancy Invitation - ${String(propertyName).replace(/[\r\n]/g, ' ')} Unit ${String(unitNumber || 'N/A').replace(/[\r\n]/g, ' ')}`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -462,17 +481,17 @@ export const sendTenantInviteEmail = async (email, inviteToken, tenantName, prop
             <h1>Welcome to Tenancy Slate!</h1>
           </div>
           <div class="content">
-            <p>Hello <strong>${tenantName}</strong>,</p>
-            <p>You have been invited by <strong>${ownerName}</strong> to join <strong>Tenancy Slate</strong> and onboard as a resident for your new rental unit.</p>
+            <p>Hello <strong>${safeTenantName}</strong>,</p>
+            <p>You have been invited by <strong>${safeOwnerName}</strong> to join <strong>Tenancy Slate</strong> and onboard as a resident for your new rental unit.</p>
             
             <div class="details-box">
               <div class="details-row">
                 <span class="label">Property:</span>
-                <span>${propertyName}</span>
+                <span>${safePropertyName}</span>
               </div>
               <div class="details-row">
                 <span class="label">Unit Identifier:</span>
-                <span>${unitNumber || 'N/A'}</span>
+                <span>${safeUnitNumber}</span>
               </div>
             </div>
             

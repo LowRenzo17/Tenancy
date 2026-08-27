@@ -22,7 +22,6 @@ export default function Tenants({ tenants, properties, onAddTenant, onDeleteTena
     leaseStartDate: new Date().toISOString().split('T')[0],
     leaseEndDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
     rentStatus: 'pending',
-    useInviteLink: true,
   });
 
   const handleSubmit = async (e) => {
@@ -47,11 +46,7 @@ export default function Tenants({ tenants, properties, onAddTenant, onDeleteTena
 
       if (createdTenant?.emailDelivery?.attempted) {
         if (createdTenant.emailDelivery.sent) {
-          toast.success(
-            createdTenant.emailDelivery.type === 'invite'
-              ? `Invitation email sent to ${formData.email}`
-              : `Onboarding email sent to ${formData.email}`
-          );
+          toast.success(`Invitation email sent to ${formData.email}`);
         } else {
           toast.warning(`Resident saved, but the email could not be sent to ${formData.email}`);
         }
@@ -68,7 +63,6 @@ export default function Tenants({ tenants, properties, onAddTenant, onDeleteTena
         leaseStartDate: new Date().toISOString().split('T')[0],
         leaseEndDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
         rentStatus: 'pending',
-        useInviteLink: true,
       });
       setShowForm(false);
     } catch (err) {
@@ -240,8 +234,7 @@ export default function Tenants({ tenants, properties, onAddTenant, onDeleteTena
                       name="rentStatus"
                       value={formData.rentStatus}
                       onChange={handleInputChange}
-                      disabled={formData.useInviteLink}
-                      className="w-full pl-3 pr-3 py-2 text-sm bg-card rounded-md border border-border placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all shadow-sm shadow-black/[0.02] disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full pl-3 pr-3 py-2 text-sm bg-card rounded-md border border-border placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all shadow-sm shadow-black/[0.02]"
                     >
                       <option value="paid">Settled</option>
                       <option value="pending">Outstanding</option>
@@ -250,19 +243,9 @@ export default function Tenants({ tenants, properties, onAddTenant, onDeleteTena
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-2.5 py-1">
-                  <input
-                    type="checkbox"
-                    id="useInviteLink"
-                    name="useInviteLink"
-                    checked={formData.useInviteLink}
-                    onChange={(e) => setFormData(prev => ({ ...prev, useInviteLink: e.target.checked }))}
-                    className="h-4 w-4 rounded border-border text-primary bg-card focus:ring-primary focus:ring-offset-background"
-                  />
-                  <label htmlFor="useInviteLink" className="text-sm font-medium text-foreground select-none cursor-pointer">
-                    Invite via Email Link (Tenant Self-Onboarding)
-                  </label>
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  New residents receive a secure, seven-day invitation link to set their own password.
+                </p>
 
                 <div className="flex gap-3 pt-6 border-t border-border mt-4">
                   <button
