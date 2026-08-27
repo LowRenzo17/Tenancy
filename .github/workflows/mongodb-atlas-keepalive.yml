@@ -1,0 +1,27 @@
+name: Keep MongoDB Atlas active
+
+on:
+  schedule:
+    # Atlas Free pauses only after 30 days without a connection. Weekly provides
+    # ample margin while keeping the scheduled work minimal.
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping-backend:
+    if: ${{ secrets.BACKEND_HEALTHCHECK_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Request the backend health endpoint
+        env:
+          HEALTHCHECK_URL: ${{ secrets.BACKEND_HEALTHCHECK_URL }}
+        run: |
+          curl --fail --silent --show-error --location \
+            --retry 3 \
+            --retry-all-errors \
+            --connect-timeout 20 \
+            --max-time 60 \
+            "$HEALTHCHECK_URL"

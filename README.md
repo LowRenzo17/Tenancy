@@ -194,6 +194,25 @@ cd frontend && npm run dev
 
 ---
 
+## MongoDB Atlas Free keep-alive
+
+Atlas Free clusters pause only after 30 days with no database connections. This
+repository includes a GitHub Actions workflow that requests the backend health
+endpoint every Monday, which makes the backend establish its normal MongoDB
+connection.
+
+Before the workflow can run, add this GitHub Actions repository secret:
+
+| Secret | Value |
+|---|---|
+| `BACKEND_HEALTHCHECK_URL` | Your public backend health endpoint, for example `https://api.example.com/api/health` |
+
+In GitHub, open **Settings → Secrets and variables → Actions**, add the secret,
+then open **Actions → Keep MongoDB Atlas active** and run it once to verify it
+returns successfully. The endpoint must be publicly reachable over HTTPS.
+
+---
+
 ## Payment Flow
 
 ```
