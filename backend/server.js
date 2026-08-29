@@ -41,6 +41,10 @@ dotenv.config();
 
 // Initialize Express app
 const app = express();
+// Render terminates TLS and forwards the original client address in
+// X-Forwarded-For. Trust only that single proxy so rate limits use the client
+// address instead of Render's shared proxy address.
+app.set('trust proxy', 1);
 const httpServer = http.createServer(app);
 const io = initializeSocket(httpServer);
 

@@ -16,6 +16,9 @@ const getSmtpConfig = () => {
     host: process.env.SMTP_HOST?.trim() || 'smtp.gmail.com',
     port,
     secure: port === 465,
+    // Render does not provide outbound IPv6 connectivity. Gmail resolves to
+    // IPv6 first in some environments, so explicitly use its IPv4 endpoint.
+    family: 4,
     requireTLS: process.env.NODE_ENV === 'production',
     connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 10000),
     greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 10000),
