@@ -67,6 +67,18 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+// Route handlers may retain detailed errors for local development, but never
+// expose database/provider details to production clients.
+app.use((req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (process.env.NODE_ENV === 'production' && res.statusCode >= 500 && body?.message) {
+      return originalJson({ ...body, message: 'Server Error' });
+    }
+    return originalJson(body);
+  };
+  next();
+});
 
 // Routes
 app.use('/api/auth', authLimiter, authRoutes);

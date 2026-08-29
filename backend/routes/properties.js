@@ -2,6 +2,7 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import Property from '../models/Property.js';
 import { protect, authorize } from '../middleware/auth.js';
+import { emitToUsers } from '../utils/realtime.js';
 
 const router = express.Router();
 
@@ -34,7 +35,7 @@ router.get('/:id', protect, async (req, res) => {
     }
 
     // Check authorization
-    if (property.ownerId.toString() !== req.user._id.toString() && req.user.accountType !== 'owner') {
+    if (property.ownerId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
@@ -91,7 +92,7 @@ router.post(
       // Emit socket event for real-time update
       const io = req.app.get('io');
       if (io) {
-        io.emit('property-created', property);
+        emitToUsers(io, 'property-created', property, [req.user._id]);
       }
 
       res.status(201).json({
@@ -143,7 +144,7 @@ router.put('/:id', protect, authorize('owner'), async (req, res) => {
     // Emit socket event for real-time update
     const io = req.app.get('io');
     if (io) {
-      io.emit('property-updated', property);
+      emitToUsers(io, 'property-updated', property, [req.user._id]);
     }
 
     res.json({
@@ -171,12 +172,19 @@ router.delete('/:id', protect, authorize('owner'), async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
+    if (property.currentTenant) {
+      return res.status(409).json({
+        success: false,
+        message: 'Remove or reassign the tenant before deleting this property',
+      });
+    }
+
     await Property.findByIdAndDelete(req.params.id);
 
     // Emit socket event for real-time update
     const io = req.app.get('io');
     if (io) {
-      io.emit('property-deleted', { propertyId: req.params.id });
+      emitToUsers(io, 'property-deleted', { propertyId: req.params.id }, [req.user._id]);
     }
 
     res.json({
