@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { ArrowRight, Mail, CheckCircle, AlertCircle } from 'lucide-react';
-import { createPasswordResetRequest, sendPasswordResetEmail, hasRecentResetRequest } from '../lib/passwordResetUtils';
 import apiClient from '../lib/api';
 
 /**
@@ -36,14 +35,6 @@ export default function ForgotPassword({ onBack, onResetSent }) {
       return;
     }
 
-    // Check for recent reset requests (rate limiting)
-    if (hasRecentResetRequest(email, 5)) {
-      setErrors({
-        email: 'Please wait 5 minutes before requesting another reset link',
-      });
-      return;
-    }
-
     setIsLoading(true);
     setErrors({});
 
@@ -51,7 +42,7 @@ export default function ForgotPassword({ onBack, onResetSent }) {
       await apiClient.forgotPassword(email);
 
       setSubmitted(true);
-      setMessage(`Reset link sent to ${email}. Check your inbox for the verification email.`);
+      setMessage('If an active account matches that email address, you will receive a reset link shortly. Please check your inbox and spam folder.');
       
       // Notify parent component
       if (onResetSent) {

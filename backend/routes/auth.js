@@ -565,7 +565,13 @@ router.post('/forgot-password', sensitiveAuthLimiter, [body('email', 'Please inc
 
     const emailSent = await sendPasswordResetEmail(normalizedEmail, resetToken);
     if (!emailSent) {
-      console.error(`[WARN] Failed to dispatch password reset email to ${normalizedEmail}`);
+      // Do not leave a valid token behind when its email was not accepted by
+      // the provider. Guard on the token to avoid clearing a newer request.
+      await User.updateOne(
+        { _id: user._id, resetPasswordToken: resetToken },
+        { $set: { resetPasswordToken: null, resetPasswordExpires: null } },
+      );
+      console.error(`[WARN] Password reset delivery failed for user ${user._id}`);
     }
 
     res.status(200).json({
