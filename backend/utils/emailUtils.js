@@ -2,6 +2,11 @@ import nodemailer from 'nodemailer';
 
 let transporter;
 
+const isResendEnabled = () => process.env.EMAIL_PROVIDER?.trim().toLowerCase() === 'resend';
+
+const getFromAddress = () => process.env.EMAIL_FROM?.trim()
+  || `"${process.env.SMTP_FROM_NAME || 'Tenancy Slate'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`;
+
 const escapeHtml = (value) => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -67,15 +72,53 @@ const getTransporter = () => {
 };
 
 export const verifyEmailTransport = async () => {
+  if (isResendEnabled()) {
+    if (!process.env.RESEND_API_KEY?.trim()) {
+      throw new Error('RESEND_API_KEY must be configured when EMAIL_PROVIDER is resend');
+    }
+    if (!process.env.EMAIL_FROM?.trim()) {
+      throw new Error('EMAIL_FROM must be configured when EMAIL_PROVIDER is resend');
+    }
+    return true;
+  }
+
   await getTransporter().verify();
   return true;
+};
+
+const sendEmail = async (mailOptions) => {
+  if (!isResendEnabled()) {
+    return getTransporter().sendMail(mailOptions);
+  }
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY.trim()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: mailOptions.from,
+      to: Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to],
+      subject: mailOptions.subject,
+      html: mailOptions.html,
+    }),
+  });
+
+  const result = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(`Resend rejected email (${response.status}): ${result?.message || 'Unknown error'}`);
+  }
+
+  console.log(`Email accepted by Resend: ${result?.id || 'no message ID returned'}`);
+  return result;
 };
 
 export const sendPasswordResetEmail = async (email, resetToken) => {
   const resetUrl = `${getFrontendUrl()}/reset-password?token=${resetToken}`;
 
   const mailOptions = {
-    from: `"${process.env.SMTP_FROM_NAME || 'Tenancy Slate'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to: email,
     subject: 'Reset Your Tenancy Slate Password',
     html: `
@@ -127,7 +170,7 @@ export const sendPasswordResetEmail = async (email, resetToken) => {
     if (process.env.NODE_ENV === 'development') {
       console.log(`\n=========================================\n[DEV] PASSWORD RESET LINK FOR ${email}:\n${resetUrl}\n=========================================\n`);
     }
-    await getTransporter().sendMail(mailOptions);
+    await sendEmail(mailOptions);
     return true;
   } catch (error) {
     console.error('Error sending email:', error);
@@ -137,7 +180,7 @@ export const sendPasswordResetEmail = async (email, resetToken) => {
 
 export const sendTwoFactorEmail = async (email, code) => {
   const mailOptions = {
-    from: `"${process.env.SMTP_FROM_NAME || 'Tenancy Slate'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to: email,
     subject: 'Your Two-Factor Authentication Code - Tenancy Slate',
     html: `
@@ -194,7 +237,7 @@ export const sendTwoFactorEmail = async (email, code) => {
     if (process.env.NODE_ENV === 'development') {
       console.log(`\n=========================================\n[DEV] 2FA CODE FOR ${email}:\n${code}\n=========================================\n`);
     }
-    await getTransporter().sendMail(mailOptions);
+    await sendEmail(mailOptions);
     return true;
   } catch (error) {
     console.error('Error sending email:', error.message);
@@ -213,7 +256,7 @@ export const sendRentReminderEmail = async (email, tenantName, amount, dueDate) 
   const formattedAmount = Number(amount).toLocaleString('en-KE');
 
   const mailOptions = {
-    from: `"${process.env.SMTP_FROM_NAME || 'Tenancy Slate'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to: email,
     subject: `Rent Payment Due - ${formattedDueDate}`,
     html: `
@@ -283,7 +326,7 @@ export const sendRentReminderEmail = async (email, tenantName, amount, dueDate) 
   };
 
   try {
-    await getTransporter().sendMail(mailOptions);
+    await sendEmail(mailOptions);
     return true;
   } catch (error) {
     console.error('Error sending email:', error);
@@ -301,7 +344,7 @@ export const sendMaintenanceNotificationEmail = async (email, maintenanceTitle, 
   const statusColor = statusColors[status] || '#6b7280';
 
   const mailOptions = {
-    from: `"${process.env.SMTP_FROM_NAME || 'Tenancy Slate'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to: email,
     subject: `Maintenance Update: ${maintenanceTitle}`,
     html: `
@@ -350,7 +393,7 @@ export const sendMaintenanceNotificationEmail = async (email, maintenanceTitle, 
   };
 
   try {
-    await getTransporter().sendMail(mailOptions);
+    await sendEmail(mailOptions);
     return true;
   } catch (error) {
     console.error('Error sending email:', error);
@@ -363,7 +406,7 @@ export const sendTenantOnboardingEmail = async (email, tempPassword, tenantName)
   const safeTenantName = escapeHtml(tenantName);
 
   const mailOptions = {
-    from: `"${process.env.SMTP_FROM_NAME || 'Tenancy Slate'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to: email,
     subject: 'Welcome to Tenancy Slate - Your Account is Ready',
     html: `
@@ -437,7 +480,7 @@ export const sendTenantOnboardingEmail = async (email, tempPassword, tenantName)
     if (process.env.NODE_ENV === 'development') {
       console.log(`\n=========================================\n[DEV] TENANT ONBOARDING CREDENTIALS FOR ${email}:\nPASSWORD: ${tempPassword}\n=========================================\n`);
     }
-    await getTransporter().sendMail(mailOptions);
+    await sendEmail(mailOptions);
     return true;
   } catch (error) {
     console.error('Error sending onboarding email:', error.message);
@@ -453,7 +496,7 @@ export const sendTenantInviteEmail = async (email, inviteToken, tenantName, prop
   const safeOwnerName = escapeHtml(ownerName || 'Your property manager');
 
   const mailOptions = {
-    from: `"${process.env.SMTP_FROM_NAME || 'Tenancy Slate'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to: email,
     subject: `Tenancy Invitation - ${String(propertyName).replace(/[\r\n]/g, ' ')} Unit ${String(unitNumber || 'N/A').replace(/[\r\n]/g, ' ')}`,
     html: `
@@ -525,7 +568,7 @@ export const sendTenantInviteEmail = async (email, inviteToken, tenantName, prop
     if (process.env.NODE_ENV === 'development') {
       console.log(`\n=========================================\n[DEV] TENANT INVITATION LINK FOR ${email}:\nURL: ${inviteUrl}\n=========================================\n`);
     }
-    await getTransporter().sendMail(mailOptions);
+    await sendEmail(mailOptions);
     return true;
   } catch (error) {
     console.error('Error sending tenant invitation email:', error.message);
