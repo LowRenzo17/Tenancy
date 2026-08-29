@@ -3,9 +3,19 @@ import nodemailer from 'nodemailer';
 let transporter;
 
 const isResendEnabled = () => process.env.EMAIL_PROVIDER?.trim().toLowerCase() === 'resend';
+const isSendGridEnabled = () => process.env.EMAIL_PROVIDER?.trim().toLowerCase() === 'sendgrid';
+const isHttpEmailProviderEnabled = () => isResendEnabled() || isSendGridEnabled();
 
 const getFromAddress = () => process.env.EMAIL_FROM?.trim()
   || `"${process.env.SMTP_FROM_NAME || 'Tenancy Slate'}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`;
+
+const getSendGridFrom = (from) => {
+  const match = String(from).match(/^\s*(?:"?([^"<]+?)"?\s*)?<([^>]+)>\s*$/);
+  if (match) {
+    return { email: match[2].trim(), ...(match[1] ? { name: match[1].trim() } : {}) };
+  }
+  return { email: String(from).trim() };
+};
 
 const escapeHtml = (value) => String(value ?? '')
   .replace(/&/g, '&amp;')
@@ -82,13 +92,49 @@ export const verifyEmailTransport = async () => {
     return true;
   }
 
+  if (isSendGridEnabled()) {
+    if (!process.env.SENDGRID_API_KEY?.trim()) {
+      throw new Error('SENDGRID_API_KEY must be configured when EMAIL_PROVIDER is sendgrid');
+    }
+    if (!process.env.EMAIL_FROM?.trim()) {
+      throw new Error('EMAIL_FROM must be configured when EMAIL_PROVIDER is sendgrid');
+    }
+    return true;
+  }
+
   await getTransporter().verify();
   return true;
 };
 
 const sendEmail = async (mailOptions) => {
-  if (!isResendEnabled()) {
+  if (!isHttpEmailProviderEnabled()) {
     return getTransporter().sendMail(mailOptions);
+  }
+
+  if (isSendGridEnabled()) {
+    const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.SENDGRID_API_KEY.trim()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        personalizations: [{
+          to: (Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to]).map((email) => ({ email })),
+        }],
+        from: getSendGridFrom(mailOptions.from),
+        subject: mailOptions.subject,
+        content: [{ type: 'text/html', value: mailOptions.html }],
+      }),
+    });
+
+    if (!response.ok) {
+      const result = await response.json().catch(() => null);
+      throw new Error(`SendGrid rejected email (${response.status}): ${result?.errors?.[0]?.message || 'Unknown error'}`);
+    }
+
+    console.log('Email accepted by SendGrid');
+    return true;
   }
 
   const response = await fetch('https://api.resend.com/emails', {
