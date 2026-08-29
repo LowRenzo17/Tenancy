@@ -8,6 +8,7 @@ import User from '../models/User.js';
 import { protect, authorize } from '../middleware/auth.js';
 import { sendRentReminderEmail, sendTenantInviteEmail } from '../utils/emailUtils.js';
 import { generateToken } from '../utils/tokenUtils.js';
+import { emitToUsers } from '../utils/realtime.js';
 
 const router = express.Router();
 
@@ -243,8 +244,8 @@ router.post(
       // Emit socket event for real-time update
       const io = req.app.get('io');
       if (io) {
-        io.emit('tenant-created', tenant);
-        io.emit('property-updated', property);
+        emitToUsers(io, 'tenant-created', tenant, [req.user._id, tenant.userId]);
+        emitToUsers(io, 'property-updated', property, [req.user._id, tenant.userId]);
       }
 
       res.status(201).json({
@@ -302,6 +303,16 @@ router.put(
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
+    if (req.body.assignedProperty) {
+      const property = await Property.findOne({ _id: req.body.assignedProperty, ownerId: req.user._id });
+      if (!property) {
+        return res.status(400).json({ success: false, message: 'Assigned property must belong to your account' });
+      }
+      if (property.currentTenant && property.currentTenant.toString() !== tenant._id.toString()) {
+        return res.status(409).json({ success: false, message: 'Assigned property already has a tenant' });
+      }
+    }
+
     // Update optional fields
     const { fullName, email, phone, assignedProperty, unitNumber, monthlyRent, leaseStartDate, leaseEndDate, securityDeposit, rentStatus, emergencyContact, occupants, notes } = req.body;
 
@@ -333,7 +344,7 @@ router.put(
     // Emit socket event for real-time update
     const io = req.app.get('io');
     if (io) {
-      io.emit('tenant-updated', tenant);
+      emitToUsers(io, 'tenant-updated', tenant, [req.user._id, tenant.userId]);
     }
 
     res.json({
@@ -374,7 +385,7 @@ router.delete('/:id', protect, authorize('owner'), async (req, res) => {
     // Emit socket event for real-time update
     const io = req.app.get('io');
     if (io) {
-      io.emit('tenant-deleted', { tenantId: req.params.id });
+      emitToUsers(io, 'tenant-deleted', { tenantId: req.params.id }, [req.user._id, tenant.userId]);
     }
 
     res.json({
@@ -682,7 +693,7 @@ router.post(
       // Emit socket event for real-time updates
       const io = req.app.get('io');
       if (io) {
-        io.emit('tenant-updated', tenant);
+        emitToUsers(io, 'tenant-updated', tenant, [tenant.ownerId, tenant.userId]);
       }
 
       // Generate JWT session token

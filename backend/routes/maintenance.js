@@ -2,8 +2,10 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import Maintenance from '../models/Maintenance.js';
 import Tenant from '../models/Tenant.js';
+import Property from '../models/Property.js';
 import { protect, authorize } from '../middleware/auth.js';
 import { sendMaintenanceNotificationEmail } from '../utils/emailUtils.js';
+import { emitToUsers } from '../utils/realtime.js';
 
 const router = express.Router();
 
@@ -108,18 +110,31 @@ router.post(
     }
 
     try {
-      const { title, description, category, priority, propertyId, tenantId, estimatedCost, notes } = req.body;
+      const { title, description, category, priority, propertyId, estimatedCost, notes } = req.body;
 
       let ownerId = req.user._id;
-      let actualTenantId = tenantId || null;
+      let actualTenantId = null;
+      const property = await Property.findById(propertyId).select('ownerId currentTenant');
+
+      if (!property) {
+        return res.status(404).json({ success: false, message: 'Property not found' });
+      }
 
       // If tenant is creating request, find owner & tenant details automatically
       if (req.user.accountType === 'tenant') {
         const tenant = await Tenant.findOne({ userId: req.user._id });
-        if (tenant) {
-          ownerId = tenant.ownerId;
-          actualTenantId = tenant._id;
+        if (!tenant || tenant.assignedProperty?.toString() !== property._id.toString()) {
+          return res.status(403).json({ success: false, message: 'Not authorized for this property' });
         }
+        ownerId = tenant.ownerId;
+        actualTenantId = tenant._id;
+      } else if (req.user.accountType === 'owner') {
+        if (property.ownerId.toString() !== req.user._id.toString()) {
+          return res.status(403).json({ success: false, message: 'Not authorized for this property' });
+        }
+        actualTenantId = property.currentTenant || null;
+      } else {
+        return res.status(403).json({ success: false, message: 'Not authorized' });
       }
 
       const maintenance = new Maintenance({
@@ -152,7 +167,8 @@ router.post(
       // Emit socket event for real-time update
       const io = req.app.get('io');
       if (io) {
-        io.emit('maintenance-created', maintenance);
+        const tenant = actualTenantId ? await Tenant.findById(actualTenantId).select('userId') : null;
+        emitToUsers(io, 'maintenance-created', maintenance, [ownerId, tenant?.userId]);
       }
 
       res.status(201).json({
@@ -175,7 +191,7 @@ router.put(
     body('title').optional().trim().isLength({ max: 200 }),
     body('description').optional().trim().isLength({ max: 2000 }),
     body('category').optional().isIn(['plumbing', 'electrical', 'hvac', 'structural', 'appliance', 'other']),
-    body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']),
+    body('priority').optional().isIn(['low', 'medium', 'high', 'emergency']),
     body('status').optional().isIn(['pending', 'in-progress', 'completed', 'cancelled']),
     body('startDate').optional().isISO8601(),
     body('completionDate').optional().isISO8601(),
@@ -222,41 +238,33 @@ router.put(
     if (category) maintenance.category = category;
     if (priority) maintenance.priority = priority;
 
+    const isCompleting = isOwner && status === 'completed' && maintenance.status !== 'completed';
+
     if (isOwner) {
       if (status) maintenance.status = status;
       if (startDate) maintenance.startDate = startDate;
       if (completionDate) maintenance.completionDate = completionDate;
+      if (isCompleting && !completionDate) maintenance.completionDate = new Date();
       if (estimatedCost !== undefined) maintenance.estimatedCost = estimatedCost;
       if (actualCost !== undefined) maintenance.actualCost = actualCost;
       if (contractor) maintenance.contractor = contractor;
       if (notes) maintenance.notes = notes;
     }
 
-    if (isOwner && status === 'completed') {
-      // Send notification email before deleting
-      if (maintenance.tenantId) {
-        const tenant = await Tenant.findById(maintenance.tenantId);
-        if (tenant) {
-          await sendMaintenanceNotificationEmail(tenant.email, maintenance.title, status);
-        }
-      }
-      
-      await Maintenance.findByIdAndDelete(req.params.id);
+    maintenance = await maintenance.save();
 
-      // Emit socket event for real-time update
-      const io = req.app.get('io');
-      if (io) {
-        io.emit('maintenance-deleted', { maintenanceId: req.params.id });
-      }
-      
-      return res.json({
-        success: true,
-        deleted: true,
-        id: req.params.id
+    if (isCompleting) {
+      await Property.findByIdAndUpdate(maintenance.propertyId, {
+        $push: {
+          maintenanceHistory: {
+            date: maintenance.completionDate,
+            description: maintenance.title,
+            cost: maintenance.actualCost || maintenance.estimatedCost,
+            contractor: maintenance.contractor?.company || maintenance.contractor?.name || '',
+          },
+        },
       });
     }
-
-    maintenance = await maintenance.save();
 
     // Send notification email if status changed
     if (isOwner && status && maintenance.tenantId) {
@@ -269,7 +277,8 @@ router.put(
     // Emit socket event for real-time update
     const io = req.app.get('io');
     if (io) {
-      io.emit('maintenance-updated', maintenance);
+      const tenant = maintenance.tenantId ? await Tenant.findById(maintenance.tenantId).select('userId') : null;
+      emitToUsers(io, 'maintenance-updated', maintenance, [maintenance.ownerId, tenant?.userId]);
     }
 
     res.json({
@@ -319,7 +328,8 @@ router.delete('/:id', protect, async (req, res) => {
     // Emit socket event for real-time update
     const io = req.app.get('io');
     if (io) {
-      io.emit('maintenance-deleted', { maintenanceId: req.params.id });
+      const tenant = maintenance.tenantId ? await Tenant.findById(maintenance.tenantId).select('userId') : null;
+      emitToUsers(io, 'maintenance-deleted', { maintenanceId: req.params.id }, [maintenance.ownerId, tenant?.userId]);
     }
 
     res.json({
@@ -336,6 +346,20 @@ router.delete('/:id', protect, async (req, res) => {
 // @access  Private
 router.get('/property/:propertyId', protect, async (req, res) => {
   try {
+    const property = await Property.findById(req.params.propertyId).select('ownerId currentTenant');
+    if (!property) {
+      return res.status(404).json({ success: false, message: 'Property not found' });
+    }
+
+    const isOwner = property.ownerId.toString() === req.user._id.toString();
+    const tenant = req.user.accountType === 'tenant'
+      ? await Tenant.findOne({ userId: req.user._id }).select('_id assignedProperty')
+      : null;
+    const isAssignedTenant = tenant?.assignedProperty?.toString() === property._id.toString();
+    if (!isOwner && !isAssignedTenant) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 100);
     const skip = (page - 1) * limit;

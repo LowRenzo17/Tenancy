@@ -2,7 +2,9 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import Payment from '../models/Payment.js';
 import Tenant from '../models/Tenant.js';
+import Property from '../models/Property.js';
 import { protect, authorize } from '../middleware/auth.js';
+import { emitToUsers } from '../utils/realtime.js';
 
 const router = express.Router();
 
@@ -110,27 +112,36 @@ router.post(
 
     try {
       const { tenantId, propertyId, amount, month, dueDate, status, paymentMethod, lateFee, discount } = req.body;
+      const tenant = await Tenant.findOne({ _id: tenantId, ownerId: req.user._id }).select('_id assignedProperty userId');
+      const property = await Property.findOne({ _id: propertyId, ownerId: req.user._id }).select('_id');
 
-      const totalAmount = amount + (lateFee || 0) - (discount || 0);
+      if (!tenant || !property || tenant.assignedProperty?.toString() !== property._id.toString()) {
+        return res.status(400).json({ success: false, message: 'Tenant and property must belong to your account and match each other' });
+      }
+
+      const numericAmount = Number(amount);
+      const numericLateFee = Number(lateFee || 0);
+      const numericDiscount = Number(discount || 0);
+      const totalAmount = numericAmount + numericLateFee - numericDiscount;
 
       const payment = new Payment({
         tenantId,
         propertyId,
         ownerId: req.user._id,
-        amount,
+        amount: numericAmount,
         month,
         dueDate,
         status: status || 'pending',
         paymentMethod: paymentMethod || 'bank-transfer',
-        lateFee: lateFee || 0,
-        discount: discount || 0,
+        lateFee: numericLateFee,
+        discount: numericDiscount,
         totalAmount,
       });
 
       await payment.save();
 
       // Update tenant's payment history
-      await Tenant.findByIdAndUpdate(tenantId, {
+      await Tenant.findByIdAndUpdate(tenant._id, {
         $push: {
           paymentHistory: {
             month,
@@ -144,8 +155,8 @@ router.post(
       // Emit socket events for real-time updates
       const io = req.app.get('io');
       if (io) {
-        io.emit('payment-created', payment);
-        io.emit('analytics-updated', { type: 'payment_created' });
+        emitToUsers(io, 'payment-created', payment, [req.user._id, tenant.userId]);
+        emitToUsers(io, 'analytics-updated', { type: 'payment_created' }, [req.user._id]);
       }
 
       res.status(201).json({
@@ -187,7 +198,7 @@ router.put('/:id', protect, async (req, res) => {
     if (receiptUrl) payment.receiptUrl = receiptUrl;
 
     // Recalculate total amount
-    payment.totalAmount = payment.amount + payment.lateFee - payment.discount;
+    payment.totalAmount = Number(payment.amount) + Number(payment.lateFee) - Number(payment.discount);
 
     payment = await payment.save();
 
@@ -220,9 +231,10 @@ router.put('/:id', protect, async (req, res) => {
     // Emit socket events for real-time updates
     const io = req.app.get('io');
     if (io) {
-      io.emit('payment-updated', payment);
-      io.emit('tenant-profile-updated', await Tenant.findById(payment.tenantId));
-      io.emit('analytics-updated', { type: 'payment_updated' });
+      const tenant = await Tenant.findById(payment.tenantId);
+      emitToUsers(io, 'payment-updated', payment, [payment.ownerId, tenant?.userId]);
+      emitToUsers(io, 'tenant-profile-updated', tenant, [tenant?.userId]);
+      emitToUsers(io, 'analytics-updated', { type: 'payment_updated' }, [payment.ownerId]);
     }
 
     res.json({
@@ -255,8 +267,9 @@ router.delete('/:id', protect, authorize('owner'), async (req, res) => {
     // Emit socket events for real-time updates
     const io = req.app.get('io');
     if (io) {
-      io.emit('payment-deleted', { paymentId: req.params.id });
-      io.emit('analytics-updated', { type: 'payment_deleted' });
+      const tenant = await Tenant.findById(payment.tenantId).select('userId');
+      emitToUsers(io, 'payment-deleted', { paymentId: req.params.id }, [payment.ownerId, tenant?.userId]);
+      emitToUsers(io, 'analytics-updated', { type: 'payment_deleted' }, [payment.ownerId]);
     }
 
     res.json({
@@ -317,9 +330,9 @@ router.post('/tenant-pay', protect, authorize('tenant'), async (req, res) => {
     // Emit socket events so owner dashboard shows the new pending payment immediately
     const io = req.app.get('io');
     if (io) {
-      io.emit('payment-created', payment);
-      io.emit('tenant-profile-updated', tenant);
-      io.emit('analytics-updated', { type: 'payment_created' });
+      emitToUsers(io, 'payment-created', payment, [tenant.ownerId, tenant.userId]);
+      emitToUsers(io, 'tenant-profile-updated', tenant, [tenant.userId]);
+      emitToUsers(io, 'analytics-updated', { type: 'payment_created' }, [tenant.ownerId]);
     }
 
     res.status(201).json({
@@ -337,13 +350,14 @@ router.post('/tenant-pay', protect, authorize('tenant'), async (req, res) => {
 // @access  Private
 router.get('/tenant/:tenantId', protect, async (req, res) => {
   try {
-    if (req.user.accountType === 'tenant' && req.user._id.toString() !== req.params.tenantId) {
-      return res.status(403).json({ success: false, message: 'Not authorized' });
-    }
-
     const query = { tenantId: req.params.tenantId };
     if (req.user.accountType === 'owner') {
       query.ownerId = req.user._id;
+    } else if (req.user.accountType === 'tenant') {
+      const tenant = await Tenant.findOne({ userId: req.user._id }).select('_id');
+      if (!tenant || tenant._id.toString() !== req.params.tenantId) {
+        return res.status(403).json({ success: false, message: 'Not authorized' });
+      }
     }
 
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
@@ -378,7 +392,11 @@ router.get('/property/:propertyId', protect, async (req, res) => {
     const query = { propertyId: req.params.propertyId };
 
     if (req.user.accountType === 'tenant') {
-      query.tenantId = req.user._id;
+      const tenant = await Tenant.findOne({ userId: req.user._id }).select('_id assignedProperty');
+      if (!tenant || tenant.assignedProperty?.toString() !== req.params.propertyId) {
+        return res.status(403).json({ success: false, message: 'Not authorized' });
+      }
+      query.tenantId = tenant._id;
     } else if (req.user.accountType === 'owner') {
       query.ownerId = req.user._id;
     }
